@@ -60,10 +60,25 @@
               class="w-full bg-brand-navy text-white text-sm py-2 rounded hover:bg-brand-navy-700 font-medium">
         Run digest now
       </button>
-      <button onclick="confirmAndRun('/admin/triggers/test-digest', 'Send a sample digest to your ADMIN_EMAIL? Does not affect any real lead statuses.', this)"
-              class="w-full bg-white border border-brand-border text-brand-ink text-sm py-2 rounded hover:bg-brand-navy-50 font-medium">
-        Send test digest to me
-      </button>
+      <div>
+        <label class="block text-xs font-medium text-brand-muted mb-1">Send test digest to me</label>
+        <div class="flex gap-2">
+          <select id="test-digest-rep"
+                  class="flex-1 border border-brand-border rounded px-2 py-1.5 text-sm">
+            <option value="">Auto (first available rep)</option>
+            {% for r in test_digest_reps %}
+              <option value="{{ r.email }}">{{ r.name }} &lt;{{ r.email }}&gt; ({{ r.count }})</option>
+            {% endfor %}
+          </select>
+          <button onclick="triggerTestDigest()"
+                  class="bg-white border border-brand-border text-brand-ink text-sm px-3 py-1.5 rounded hover:bg-brand-navy-50 font-medium whitespace-nowrap">
+            Send
+          </button>
+        </div>
+        {% if not test_digest_reps %}
+          <p class="text-xs text-brand-muted mt-1">No reps have pending leads with email yet.</p>
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>
@@ -180,6 +195,25 @@ async function triggerEnrichment() {
     if (!resp.ok) throw new Error(data.detail || 'Failed');
     alert('Done.\n\n' + JSON.stringify(data, null, 2));
     location.reload();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function triggerTestDigest() {
+  const rep = document.getElementById('test-digest-rep').value;
+  const who = rep || 'the first available rep';
+  if (!window.confirm(
+        'Send a sample digest of ' + who + "'s pending leads to your ADMIN_EMAIL?\n\n" +
+        'Does not affect any real lead statuses.'
+      )) return;
+  let url = '/admin/triggers/test-digest';
+  if (rep) url += '?rep=' + encodeURIComponent(rep);
+  try {
+    const resp = await fetch(url, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    alert('Done.\n\n' + JSON.stringify(data, null, 2));
   } catch (e) {
     alert('Error: ' + e.message);
   }

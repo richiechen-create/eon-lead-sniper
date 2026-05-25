@@ -216,6 +216,79 @@ def test_test_digest_returns_error_when_admin_email_unset(env, monkeypatch):
     assert "ADMIN_EMAIL" in resp.json()["detail"]
 
 
+def test_test_digest_with_rep_param_picks_that_rep(env, monkeypatch):
+    """If ?rep=email is supplied, preview that rep's leads even if alphabetically later."""
+    client, SessionLocal = env
+    _seed_three_reps_with_distinct_leads(SessionLocal)
+
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        "app.admin.routes.triggers.send_email",
+        lambda **k: sent.append(k) or {"ok": True},
+    )
+
+    resp = client.post("/admin/triggers/test-digest?rep=bea@x.com")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["sent"] is True
+    assert data["preview_rep"] == "bea@x.com"
+    assert data["leads"] == 3
+
+    body = (sent[0].get("html") or "") + "\n" + (sent[0].get("text") or "")
+    for name in ("Bob", "Brian", "Bella"):
+        assert name in body
+    for name in ("Alice", "Adam", "Cara"):
+        assert name not in body, f"non-Bea lead leaked: {name}"
+
+
+def test_test_digest_rep_param_404_for_unknown_rep(env, monkeypatch):
+    client, SessionLocal = env
+    _seed_three_reps_with_distinct_leads(SessionLocal)
+    monkeypatch.setattr("app.admin.routes.triggers.send_email", lambda **k: {"ok": True})
+
+    resp = client.post("/admin/triggers/test-digest?rep=ghost@x.com")
+    assert resp.status_code == 404
+    assert "ghost@x.com" in resp.json()["detail"]
+
+
+def test_test_digest_rep_param_400_for_inactive_rep(env, monkeypatch):
+    client, SessionLocal = env
+    _seed_three_reps_with_distinct_leads(SessionLocal)
+    with SessionLocal() as s:
+        rep = s.query(Rep).filter_by(email="bea@x.com").one()
+        rep.is_active = False
+        s.commit()
+
+    monkeypatch.setattr("app.admin.routes.triggers.send_email", lambda **k: {"ok": True})
+
+    resp = client.post("/admin/triggers/test-digest?rep=bea@x.com")
+    assert resp.status_code == 400
+    assert "inactive" in resp.json()["detail"].lower()
+
+
+def test_test_digest_rep_param_returns_no_leads_when_rep_has_none(env, monkeypatch):
+    """Picking a rep who is active but has no pending+enriched leads → sent=false, no email."""
+    client, SessionLocal = env
+    with SessionLocal() as s:
+        empty_rep = Rep(email="empty@x.com", name="Empty", timezone="UTC", is_active=True)
+        s.add(empty_rep)
+        s.commit()
+
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        "app.admin.routes.triggers.send_email",
+        lambda **k: sent.append(k) or {"ok": True},
+    )
+
+    resp = client.post("/admin/triggers/test-digest?rep=empty@x.com")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["sent"] is False
+    assert data["preview_rep"] == "empty@x.com"
+    assert data["leads"] == 0
+    assert sent == []
+
+
 def test_test_digest_honors_daily_lead_cap(env, monkeypatch):
     """If the rep has a daily_lead_cap of N, only N leads appear in the preview."""
     client, SessionLocal = env

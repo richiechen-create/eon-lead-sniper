@@ -106,6 +106,30 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
             label = (industry or "").strip() or "(no segment)"
             segments.append({"label": label, "count": int(count)})
 
+        # Active reps with at least one pending+enriched lead — for the
+        # test-digest rep picker dropdown. Ordered by email so the same rep
+        # is "auto-picked" when the operator leaves the dropdown empty.
+        rep_lead_counts = dict(
+            session.execute(
+                select(Lead.assigned_rep_email, func.count(Lead.id))
+                .where(Lead.delivery_status == "pending")
+                .where(Lead.email.is_not(None))
+                .group_by(Lead.assigned_rep_email)
+            ).all()
+        )
+        active_rep_rows = list(
+            session.execute(
+                select(Rep.email, Rep.name)
+                .where(Rep.is_active == True)  # noqa: E712
+                .order_by(Rep.email)
+            ).all()
+        )
+        test_digest_reps = [
+            {"email": email, "name": name, "count": int(rep_lead_counts[email])}
+            for email, name in active_rep_rows
+            if rep_lead_counts.get(email)
+        ]
+
     return render(
         request,
         "dashboard.html",
@@ -128,4 +152,5 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
         drift_leads_affected=drift["leads_affected"],
         drift_examples=drift["bad_countries"][:5],
         segments=segments,
+        test_digest_reps=test_digest_reps,
     )

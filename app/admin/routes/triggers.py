@@ -59,12 +59,17 @@ def trigger_digest(send_admin: bool = False, _user: str = Depends(require_admin)
 
 
 @router.post("/test-digest")
-def trigger_test_digest(_user: str = Depends(require_admin)) -> dict:
+def trigger_test_digest(
+    rep: Optional[str] = None,
+    _user: str = Depends(require_admin),
+) -> dict:
     """Send a faithful preview of one rep's next digest to ADMIN_EMAIL.
 
     Behavior:
-      - Picks the first active rep (alphabetical by email) who has at least
-        one pending lead with a non-null email.
+      - If `rep` (email) is provided, previews that rep's digest. The rep must
+        be active and must have at least one pending+enriched lead.
+      - If `rep` is omitted, picks the first active rep (alphabetical by email)
+        who has at least one pending+enriched lead.
       - Uses the same lead filter as the production scheduler
         (`_pending_leads_for_rep`): pending status + has email, ordered by
         date_discovered ASC, honoring daily_lead_cap.
@@ -81,31 +86,58 @@ def trigger_test_digest(_user: str = Depends(require_admin)) -> dict:
             headers={"X-Toast": "ADMIN_EMAIL not configured"},
         )
 
-    with session_scope() as session:
-        active_reps = list(
-            session.execute(
-                select(Rep)
-                .where(Rep.is_active == True)  # noqa: E712
-                .order_by(Rep.email)
-            ).scalars()
-        )
+    requested_rep = (rep or "").strip().lower() or None
 
+    with session_scope() as session:
         selected_rep = None
         selected_leads: list = []
-        for rep in active_reps:
-            leads = _pending_leads_for_rep(session, rep)
-            if leads:
-                selected_rep = rep
-                selected_leads = leads
-                break
 
-        if selected_rep is None:
-            return {
-                "sent": False,
-                "reason": "no leads to preview",
-                "preview_rep": None,
-                "leads": 0,
-            }
+        if requested_rep is not None:
+            target = session.execute(
+                select(Rep).where(Rep.email == requested_rep)
+            ).scalar_one_or_none()
+            if target is None:
+                msg = f"Rep {requested_rep} not found."
+                raise HTTPException(
+                    status_code=404, detail=msg, headers={"X-Toast": msg}
+                )
+            if not target.is_active:
+                msg = f"Rep {requested_rep} is inactive."
+                raise HTTPException(
+                    status_code=400, detail=msg, headers={"X-Toast": msg}
+                )
+            leads = _pending_leads_for_rep(session, target)
+            if not leads:
+                return {
+                    "sent": False,
+                    "reason": f"{requested_rep} has no pending leads with email",
+                    "preview_rep": requested_rep,
+                    "leads": 0,
+                }
+            selected_rep = target
+            selected_leads = leads
+        else:
+            active_reps = list(
+                session.execute(
+                    select(Rep)
+                    .where(Rep.is_active == True)  # noqa: E712
+                    .order_by(Rep.email)
+                ).scalars()
+            )
+            for r in active_reps:
+                leads = _pending_leads_for_rep(session, r)
+                if leads:
+                    selected_rep = r
+                    selected_leads = leads
+                    break
+
+            if selected_rep is None:
+                return {
+                    "sent": False,
+                    "reason": "no leads to preview",
+                    "preview_rep": None,
+                    "leads": 0,
+                }
 
         digest = build_digest(
             selected_rep.email, selected_rep.name, selected_leads, datetime.utcnow()
