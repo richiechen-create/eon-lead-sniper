@@ -8,129 +8,441 @@
           class="text-sm bg-brand-crimson text-white px-3 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add rule</button>
 </div>
 
-<div class="bg-brand-crimson-50 border border-brand-crimson text-brand-crimson text-sm rounded p-3 mb-4">
-  These rules fire only when a lead's company has no specific assignment.
-  Per-company overrides are managed on the <a href="/admin/companies" class="underline font-medium">Companies page</a>.
+{# Cascade explainer — makes it obvious this page is step 2 of 3 #}
+<div class="bg-white border border-brand-border rounded-lg p-4 mb-4">
+  <p class="text-xs uppercase tracking-wider text-brand-muted mb-2">Routing cascade</p>
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+    <a href="/admin/companies" class="text-brand-ink hover:text-brand-crimson">
+      <span class="text-brand-muted mr-1">1.</span>Per-company assignment
+      <span class="text-xs text-brand-muted block ml-4">Companies page</span>
+    </a>
+    <span class="text-brand-muted">→</span>
+    <div class="text-brand-ink font-medium">
+      <span class="text-brand-muted mr-1 font-normal">2.</span>The rules below
+      <span class="text-xs text-brand-muted block ml-4">This page</span>
+    </div>
+    <span class="text-brand-muted">→</span>
+    <a href="/admin/reps" class="text-brand-ink hover:text-brand-crimson">
+      <span class="text-brand-muted mr-1">3.</span>Fallback to
+      <code class="text-xs">{{ default_rep_email }}</code>
+      <span class="text-xs text-brand-muted block ml-4">Reps page</span>
+    </a>
+  </div>
+  <p class="text-xs text-brand-muted mt-2">
+    First match wins. Within a rule, all condition keys must match (AND).
+  </p>
 </div>
 
-<p class="text-sm text-gray-500 mb-4">
-  Lower priority number = evaluated first. Drag rows to reorder; priorities save on drop.
-  Conditions are JSON: keys can be <code>company_industry</code>, <code>company_country</code>, <code>company_tier</code>, <code>company_domain</code>, each an array.
-</p>
+{# Test panel — what would happen for a hypothetical lead #}
+<div class="bg-white border border-brand-border rounded-lg p-3 mb-4">
+  <p class="text-xs uppercase tracking-wider text-brand-muted mb-2">Test routing</p>
+  <div class="flex flex-wrap gap-2 items-end">
+    <div class="flex-1 min-w-[10rem]">
+      <label class="block text-xs text-brand-muted">Industry</label>
+      <input id="test-industry" list="industries-list" placeholder="—"
+             class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+    </div>
+    <div class="flex-1 min-w-[10rem]">
+      <label class="block text-xs text-brand-muted">Country</label>
+      <input id="test-country" list="canonical-countries" placeholder="—"
+             class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+    </div>
+    <div class="flex-1 min-w-[8rem]">
+      <label class="block text-xs text-brand-muted">Tier</label>
+      <input id="test-tier" list="tiers-list" placeholder="—"
+             class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+    </div>
+    <div class="flex-1 min-w-[10rem]">
+      <label class="block text-xs text-brand-muted">Domain</label>
+      <input id="test-domain" placeholder="—"
+             class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+    </div>
+    <div class="flex-[2] min-w-[14rem]">
+      <label class="block text-xs text-brand-muted">Would route to</label>
+      <p id="test-result" class="text-sm text-brand-ink font-mono">—</p>
+    </div>
+  </div>
+</div>
 
-<div class="bg-white shadow rounded-lg overflow-x-auto">
-  <table class="w-full text-sm">
-    <thead class="text-xs uppercase text-gray-500 bg-gray-50">
-      <tr>
-        <th class="text-left px-3 py-2"></th>
-        <th class="text-left px-3 py-2">Priority</th>
-        <th class="text-left px-3 py-2">Name</th>
-        <th class="text-left px-3 py-2">Conditions</th>
-        <th class="text-left px-3 py-2">Rep</th>
-        <th class="text-left px-3 py-2">Active</th>
-      </tr>
-    </thead>
-    <tbody id="rules-tbody">
-      {% for rule in rules %}
-      <tr class="border-t border-gray-100" draggable="true" data-rule-id="{{ rule.id }}">
-        <td class="px-3 py-2 text-gray-400 cursor-move">⋮⋮</td>
-        <td class="px-3 py-2">
-          <input value="{{ rule.priority }}" name="priority" type="number"
-                 hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
-                 class="w-16 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
-        </td>
-        <td class="px-3 py-2">
-          <input value="{{ rule.name }}" name="name"
-                 hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
-                 class="w-64 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
-        </td>
-        <td class="px-3 py-2">
-          <textarea name="conditions" rows="2"
-                    hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
-                    class="w-80 font-mono text-xs border border-gray-200 rounded px-1 py-0.5">{{ rule.conditions | tojson }}</textarea>
-        </td>
-        <td class="px-3 py-2">
-          <select name="assigned_rep_email"
-                  hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
-                  class="text-xs border border-gray-200 rounded px-1 py-0.5">
-            <option value="{{ rule.assigned_rep_email }}" selected>{{ rule.assigned_rep_email }}</option>
-            {% for r in reps %}
-              {% if r.email != rule.assigned_rep_email %}
-                <option value="{{ r.email }}">{{ r.email }}</option>
-              {% endif %}
-            {% endfor %}
-          </select>
-        </td>
-        <td class="px-3 py-2">
-          <form hx-patch="/admin/routing-rules/{{ rule.id }}" hx-swap="none">
-            <input type="hidden" name="is_active" value="{{ 'false' if rule.is_active else 'true' }}"/>
-            <button class="text-xs px-2 py-0.5 rounded {{ 'bg-emerald-100 text-emerald-700' if rule.is_active else 'bg-gray-100 text-gray-500' }}">
-              {{ 'active' if rule.is_active else 'inactive' }}
-            </button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6" class="px-3 py-6 text-center text-gray-500">No rules — leads fall back to <code>DEFAULT_REP_EMAIL</code>.</td></tr>
+{% macro condition_field(rule_id, key, values, placeholder, list_id="") %}
+  <div class="space-y-1">
+    {% if values %}
+      <div class="flex flex-wrap gap-1">
+        {% for v in values %}
+          <span class="inline-flex items-center bg-brand-navy-50 text-brand-navy text-xs rounded px-1.5 py-0.5">{{ v }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <input type="text"
+           value="{{ values | join(', ') }}"
+           data-field="{{ key }}"
+           data-rule-id="{{ rule_id }}"
+           {% if list_id %}list="{{ list_id }}"{% endif %}
+           placeholder="{{ placeholder }}"
+           class="rule-condition w-full text-xs border border-brand-border rounded px-1 py-0.5 font-mono"/>
+  </div>
+{% endmacro %}
+
+{% macro rule_row(rule) %}
+<tr class="border-t border-brand-border align-top" draggable="true" data-rule-id="{{ rule.id }}">
+  <td class="px-3 py-2 text-brand-muted text-xs cursor-move w-6">⋮⋮</td>
+  <td class="px-3 py-2 w-48">
+    <input value="{{ rule.name }}" name="name" data-rule-id="{{ rule.id }}"
+           class="rule-name w-full border border-brand-border rounded px-1 py-0.5 text-sm"/>
+    <button type="button" data-rule-id="{{ rule.id }}"
+            class="rule-reset-name text-xs text-brand-crimson hover:underline mt-1">
+      Reset to auto
+    </button>
+  </td>
+  <td class="px-2 py-2 w-44">
+    {{ condition_field(rule.id, "industry", rule.conditions.get("company_industry") or [], "industry", "industries-list") }}
+  </td>
+  <td class="px-2 py-2 w-44">
+    {{ condition_field(rule.id, "country", rule.conditions.get("company_country") or [], "country", "canonical-countries") }}
+  </td>
+  <td class="px-2 py-2 w-32">
+    {{ condition_field(rule.id, "tier", rule.conditions.get("company_tier") or [], "tier", "tiers-list") }}
+  </td>
+  <td class="px-2 py-2 w-44">
+    {{ condition_field(rule.id, "domain", rule.conditions.get("company_domain") or [], "domain") }}
+  </td>
+  <td class="px-3 py-2 w-56">
+    <select data-field="rep" data-rule-id="{{ rule.id }}"
+            class="rule-rep w-full text-xs border border-brand-border rounded px-1 py-0.5">
+      <option value="{{ rule.assigned_rep_email }}" selected>{{ rule.assigned_rep_email }}</option>
+      {% for r in reps %}
+        {% if r.email != rule.assigned_rep_email %}
+          <option value="{{ r.email }}">{{ r.email }}</option>
+        {% endif %}
       {% endfor %}
-    </tbody>
-  </table>
-</div>
+    </select>
+  </td>
+  <td class="px-3 py-2 w-20">
+    <button type="button" data-rule-id="{{ rule.id }}"
+            class="rule-active-toggle text-xs px-2 py-0.5 rounded {{ 'bg-emerald-100 text-emerald-700' if rule.is_active else 'bg-gray-100 text-brand-muted' }}">
+      {{ 'active' if rule.is_active else 'inactive' }}
+    </button>
+  </td>
+</tr>
+{% endmacro %}
 
+{# Active rules, grouped by industry #}
+{% if active_groups %}
+  {% for industry_label, group in active_groups %}
+  <section class="bg-white shadow rounded-lg overflow-hidden mb-4" data-industry-group="{{ industry_label }}">
+    <header class="px-4 py-2 border-b border-brand-border bg-brand-navy-50/40">
+      <h2 class="text-sm font-semibold text-brand-ink">
+        {{ industry_label }}
+        <span class="text-xs text-brand-muted font-normal">({{ group | length }} rule{{ '' if group | length == 1 else 's' }})</span>
+      </h2>
+    </header>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs uppercase text-brand-muted bg-gray-50">
+          <tr>
+            <th class="px-3 py-2"></th>
+            <th class="text-left px-3 py-2">Name</th>
+            <th class="text-left px-2 py-2">Industry</th>
+            <th class="text-left px-2 py-2">Country</th>
+            <th class="text-left px-2 py-2">Tier</th>
+            <th class="text-left px-2 py-2">Domain</th>
+            <th class="text-left px-3 py-2">Rep</th>
+            <th class="text-left px-3 py-2">Status</th>
+          </tr>
+        </thead>
+        <tbody class="rules-tbody">
+          {% for rule in group %}{{ rule_row(rule) }}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+{% else %}
+  <p class="bg-white shadow rounded-lg p-6 text-center text-sm text-brand-muted">
+    No active routing rules yet. Without rules, every lead falls through to
+    <code>{{ default_rep_email }}</code>.
+  </p>
+{% endif %}
+
+{# Inactive rules — collapsed by default #}
+{% if inactive_rules %}
+<details class="bg-white shadow rounded-lg overflow-hidden mb-4">
+  <summary class="px-4 py-2 border-b border-brand-border cursor-pointer text-sm font-semibold text-brand-muted">
+    Inactive ({{ inactive_rules | length }})
+  </summary>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="text-xs uppercase text-brand-muted bg-gray-50">
+        <tr>
+          <th class="px-3 py-2"></th>
+          <th class="text-left px-3 py-2">Name</th>
+          <th class="text-left px-2 py-2">Industry</th>
+          <th class="text-left px-2 py-2">Country</th>
+          <th class="text-left px-2 py-2">Tier</th>
+          <th class="text-left px-2 py-2">Domain</th>
+          <th class="text-left px-3 py-2">Rep</th>
+          <th class="text-left px-3 py-2">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rule in inactive_rules %}{{ rule_row(rule) }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+
+{# Add modal — structured, no JSON #}
 <div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-    <h2 class="text-lg font-semibold mb-4">Add routing rule</h2>
-    <form hx-post="/admin/routing-rules" class="space-y-3">
-      <input name="name" placeholder="Rule name" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
-      <input name="priority" type="number" placeholder="Priority (e.g. 10)" required value="10" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
-      <textarea name="conditions" rows="5"
-                placeholder='{"company_industry": ["oil and gas"], "company_country": ["United States"]}'
-                class="w-full font-mono text-xs border border-gray-300 rounded px-3 py-2"></textarea>
-      <select name="assigned_rep_email" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
-        <option value="">Select rep…</option>
-        {% for r in reps %}
-          <option value="{{ r.email }}">{{ r.email }} — {{ r.name }}</option>
-        {% endfor %}
-      </select>
-      <input name="assigned_rep_name" placeholder="Rep display name (optional)" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+    <h2 class="text-lg font-semibold mb-4 text-brand-ink">Add routing rule</h2>
+    <form id="add-rule-form" hx-post="/admin/routing-rules" class="space-y-3">
+      <input id="add-name" name="name" placeholder="Rule name (auto-generated if left empty)"
+             class="w-full border border-brand-border rounded px-3 py-2 text-sm"/>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-brand-muted mb-1">Industry (comma-separated)</label>
+          <input id="add-industry" name="_industry_csv" list="industries-list"
+                 placeholder="e.g. oil and gas, manufacturing"
+                 class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs text-brand-muted mb-1">Country (comma-separated)</label>
+          <input id="add-country" name="_country_csv" list="canonical-countries"
+                 placeholder="e.g. United States, Canada"
+                 class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs text-brand-muted mb-1">Tier (comma-separated)</label>
+          <input id="add-tier" name="_tier_csv" list="tiers-list"
+                 placeholder="e.g. tier1, strategic"
+                 class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs text-brand-muted mb-1">Domain (comma-separated)</label>
+          <input id="add-domain" name="_domain_csv"
+                 placeholder="e.g. exxonmobil.com"
+                 class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs text-brand-muted mb-1">Assigned rep</label>
+        <select name="assigned_rep_email" required
+                class="w-full border border-brand-border rounded px-3 py-2 text-sm">
+          <option value="">Select rep…</option>
+          {% for r in reps %}
+            <option value="{{ r.email }}">{{ r.email }} — {{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <p class="text-xs text-brand-muted">
+        Leave a field empty to match any value. Empty everything → catch-all (fallback).
+      </p>
+
       <div class="flex justify-end space-x-2">
         <button type="button" onclick="document.getElementById('add-modal').classList.add('hidden')"
-                class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
+                class="px-3 py-1.5 text-sm border border-brand-border rounded">Cancel</button>
         <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add</button>
       </div>
     </form>
   </div>
 </div>
 
+<datalist id="industries-list">
+  {% for i in distinct_industries %}<option value="{{ i }}">{% endfor %}
+</datalist>
+<datalist id="tiers-list">
+  {% for t in distinct_tiers %}<option value="{{ t }}">{% endfor %}
+</datalist>
+
 <script>
+// -------- Helpers --------
+function csvToList(s) {
+  return (s || "").split(",").map(x => x.trim()).filter(Boolean);
+}
+
+function buildFormBody(ruleId, field, values) {
+  // Send each value as a repeated form key (structured form-encoded list).
+  // FastAPI's `list[str] = Form([])` will receive these correctly.
+  const body = new URLSearchParams();
+  values.forEach(v => body.append(field, v));
+  return body;
+}
+
+async function patchRuleCondition(ruleId, field, csvValue) {
+  const values = csvToList(csvValue);
+  const body = new URLSearchParams();
+  values.forEach(v => body.append(field, v));
+  if (values.length === 0) body.append(field, ""); // signal "clear this field"
+  const resp = await fetch(`/admin/routing-rules/${ruleId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    alert(data.detail || "Save failed");
+  }
+}
+
+async function patchRuleScalar(ruleId, field, value) {
+  const body = new URLSearchParams();
+  body.append(field, value);
+  const resp = await fetch(`/admin/routing-rules/${ruleId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    alert(data.detail || "Save failed");
+  }
+}
+
+// -------- Per-row condition inputs (industry/country/tier/domain) --------
+document.querySelectorAll(".rule-condition").forEach(el => {
+  el.addEventListener("change", () => {
+    patchRuleCondition(el.dataset.ruleId, el.dataset.field, el.value);
+  });
+});
+
+// -------- Name inputs --------
+document.querySelectorAll(".rule-name").forEach(el => {
+  el.addEventListener("change", () => {
+    patchRuleScalar(el.dataset.ruleId, "name", el.value);
+  });
+});
+
+// -------- Reset name to auto --------
+document.querySelectorAll(".rule-reset-name").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const ruleId = btn.dataset.ruleId;
+    // Send empty name → server falls back to auto-derived
+    await patchRuleScalar(ruleId, "name", "");
+    location.reload();
+  });
+});
+
+// -------- Rep dropdown --------
+document.querySelectorAll(".rule-rep").forEach(sel => {
+  sel.addEventListener("change", () => {
+    patchRuleScalar(sel.dataset.ruleId, "assigned_rep_email", sel.value);
+  });
+});
+
+// -------- Active toggle --------
+document.querySelectorAll(".rule-active-toggle").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const ruleId = btn.dataset.ruleId;
+    const currentlyActive = btn.textContent.trim() === "active";
+    await patchRuleScalar(ruleId, "is_active", currentlyActive ? "false" : "true");
+    location.reload();
+  });
+});
+
+// -------- Drag-reorder (across all visible active rows) --------
 (function() {
-  const tbody = document.getElementById('rules-tbody');
-  if (!tbody) return;
   let dragged = null;
-  tbody.addEventListener('dragstart', (e) => {
-    const row = e.target.closest('tr');
-    if (!row) return;
-    dragged = row;
-    row.style.opacity = '0.4';
+  document.querySelectorAll("tbody.rules-tbody").forEach(tbody => {
+    tbody.addEventListener("dragstart", e => {
+      const row = e.target.closest("tr[data-rule-id]");
+      if (!row) return;
+      dragged = row;
+      row.style.opacity = "0.4";
+    });
+    tbody.addEventListener("dragend", async () => {
+      if (dragged) dragged.style.opacity = "1";
+      dragged = null;
+      // Persist priorities across the entire active list (all groups combined).
+      const allRows = document.querySelectorAll("tbody.rules-tbody tr[data-rule-id]");
+      const order = [...allRows].map(r => r.dataset.ruleId);
+      await fetch("/admin/routing-rules/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order }),
+      });
+      location.reload();
+    });
+    tbody.addEventListener("dragover", e => {
+      e.preventDefault();
+      const row = e.target.closest("tr[data-rule-id]");
+      if (!row || row === dragged) return;
+      const rect = row.getBoundingClientRect();
+      const after = (e.clientY - rect.top) > rect.height / 2;
+      row.parentNode.insertBefore(dragged, after ? row.nextSibling : row);
+    });
   });
-  tbody.addEventListener('dragend', () => {
-    if (dragged) dragged.style.opacity = '1';
-    dragged = null;
-    const order = [...tbody.querySelectorAll('tr[data-rule-id]')].map(r => r.dataset.ruleId);
-    fetch('/admin/routing-rules/reorder', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ order })
-    }).then(() => location.reload());
+})();
+
+// -------- Add modal: translate the CSV inputs into multi-value form data --------
+(function() {
+  const form = document.getElementById("add-rule-form");
+  if (!form) return;
+  form.addEventListener("htmx:configRequest", evt => {
+    const params = evt.detail.parameters;
+    // Build new params object replacing the *_csv keys with real multi-value ones.
+    const newParams = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (["_industry_csv", "_country_csv", "_tier_csv", "_domain_csv"].includes(k)) return;
+      newParams.append(k, v);
+    });
+    csvToList(params["_industry_csv"] || "").forEach(v => newParams.append("industry", v));
+    csvToList(params["_country_csv"] || "").forEach(v => newParams.append("country", v));
+    csvToList(params["_tier_csv"] || "").forEach(v => newParams.append("tier", v));
+    csvToList(params["_domain_csv"] || "").forEach(v => newParams.append("domain", v));
+    // Hand HTMX a flat object — we'll serialize ourselves via JSON detail field? No,
+    // HTMX expects parameters to be a plain object. Convert: keep last value per
+    // key for single-valued, but for repeating keys HTMX won't serialize correctly.
+    // Workaround: cancel HTMX submission, do a manual fetch.
+    evt.detail.parameters = {};
+    evt.preventDefault();
+    fetch("/admin/routing-rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: newParams.toString(),
+    }).then(r => {
+      if (r.ok) location.href = "/admin/routing-rules";
+      else r.json().then(d => alert(d.detail || "Failed"));
+    });
   });
-  tbody.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    const row = e.target.closest('tr');
-    if (!row || row === dragged) return;
-    const rect = row.getBoundingClientRect();
-    const after = (e.clientY - rect.top) > rect.height / 2;
-    row.parentNode.insertBefore(dragged, after ? row.nextSibling : row);
-  });
+})();
+
+// -------- Test routing preview --------
+(function() {
+  const fields = ["test-industry", "test-country", "test-tier", "test-domain"];
+  const result = document.getElementById("test-result");
+  let timer = null;
+  function preview() {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const params = new URLSearchParams();
+      const ind = document.getElementById("test-industry").value.trim();
+      const cou = document.getElementById("test-country").value.trim();
+      const tie = document.getElementById("test-tier").value.trim();
+      const dom = document.getElementById("test-domain").value.trim();
+      if (ind) params.append("industry", ind);
+      if (cou) params.append("country", cou);
+      if (tie) params.append("tier", tie);
+      if (dom) params.append("domain", dom);
+      if (![ind, cou, tie, dom].some(Boolean)) {
+        result.textContent = "—";
+        return;
+      }
+      const resp = await fetch("/admin/routing-rules/preview?" + params.toString());
+      if (!resp.ok) {
+        result.textContent = "(error)";
+        return;
+      }
+      const d = await resp.json();
+      const status = d.routing_status === "fallback" ? " (fallback)" : "";
+      const rule = d.matched_rule_name ? ` · matched: ${d.matched_rule_name}` : "";
+      result.textContent = `${d.assigned_rep_email}${status}${rule}`;
+    }, 200);
+  }
+  fields.forEach(id => document.getElementById(id).addEventListener("input", preview));
 })();
 </script>
 
