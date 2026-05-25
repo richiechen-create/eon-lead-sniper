@@ -23,6 +23,28 @@ CANONICAL_TIMEZONES: list[str] = canonical_timezones()
 _TZ_LOOKUP: set[str] = set(CANONICAL_TIMEZONES)
 
 
+@lru_cache(maxsize=1)
+def timezones_by_region() -> list[tuple[str, list[str]]]:
+    """Group IANA timezones by their first path segment (Africa, America, ...).
+
+    Returned as a list of (region_label, [tz_names]) tuples in display order,
+    with UTC as its own pinned group at the top.
+    """
+    groups: dict[str, list[str]] = {}
+    for tz in CANONICAL_TIMEZONES:
+        if tz == "UTC":
+            continue
+        region = tz.split("/", 1)[0] if "/" in tz else "Other"
+        groups.setdefault(region, []).append(tz)
+    ordered_regions = sorted(groups.keys())
+    out: list[tuple[str, list[str]]] = [("UTC", ["UTC"])]
+    out.extend((region, sorted(groups[region])) for region in ordered_regions)
+    return out
+
+
+TIMEZONES_BY_REGION: list[tuple[str, list[str]]] = timezones_by_region()
+
+
 def is_valid_timezone(value: str | None) -> bool:
     """True if value is a recognized IANA timezone. Empty/None treats as 'use default'."""
     if value is None or value == "":
