@@ -1,17 +1,17 @@
-# CLAUDE.md — lead_engine / EON Lead Sniper
+# CLAUDE.md — lead_engine / EON Bullseye
 
 Memory file for future Claude sessions. Read this first before doing anything in
 this repo so you don't have to re-derive the design from chat history.
 
 ## What this is
 
-**Project:** EON Lead Sniper — automated lead discovery + enrichment + delivery
+**Project:** EON Bullseye — automated lead discovery + enrichment + delivery
 for EON Reality.
 **Owner:** Richie (Chief of Staff at EON Reality, c.richie@gmail.com).
 **Audience for the UI:** one operator (Richie). Reps never log in — they receive
 daily digest emails and action leads in their own Gmail / CRMs.
 **Backend package:** still named `lead_engine/` on disk. Only user-facing
-strings carry the "EON Lead Sniper" brand. Don't rename modules.
+strings carry the "EON Bullseye" brand. Don't rename modules.
 
 **Brand colors** (Tailwind extend keys in templates): navy `#1A1F4D`, crimson
 `#8C1D3E`, navyTint `#EEF0FA`, crimsonTint `#FBEEF2`.
@@ -219,7 +219,7 @@ From `app/config.py`. Defaults shown when blank is OK locally.
 | `DATABASE_URL` | `sqlite:///./lead_engine.sqlite` | Use `postgresql+psycopg2://…` in prod. |
 | `RESEND_API_KEY` | "" | Required in prod. |
 | `FROM_EMAIL` | `leadengine@leadengine.eonreality.com` | Verified subdomain — do NOT send from main domain. |
-| `FROM_NAME` | `EON Lead Sniper` | |
+| `FROM_NAME` | `EON Bullseye` | |
 | `ADMIN_EMAIL` | `admin@eonreality.com` | Where admin alerts and daily summary go. |
 | `DEFAULT_REP_EMAIL` | `dan@eonreality.com` | Fallback recipient. |
 | `DEFAULT_REP_NAME` | `Dan (Fallback)` | |
@@ -277,7 +277,7 @@ From `app/config.py`. Defaults shown when blank is OK locally.
   (`alembic revision -m "…"` then edit the auto-generated file — env.py is
   already wired to the models).
 - Brand: navy `#1A1F4D` / crimson `#8C1D3E`. Backend folder stays
-  `lead_engine/`; user-facing copy stays "EON Lead Sniper".
+  `lead_engine/`; user-facing copy stays "EON Bullseye".
 - Don't introduce phone enrichment under any framing.
 - If you touch the Apollo client, re-run `test_apollo_no_phone.py` —
   it's the safety net for the no-phone invariant.
@@ -286,7 +286,7 @@ From `app/config.py`. Defaults shown when blank is OK locally.
 
 1. Companies page: panels grouped by segment (industry), add-company under each.
 2. Per-company per-country rep assignment (the cascade above).
-3. Brand rename to EON Lead Sniper + navy/crimson palette.
+3. Brand rename to EON Bullseye + navy/crimson palette.
 4. Add-country form in rep editor collapsed behind "+ Add country assignment".
 5. Profiles cell becomes a clickable popover with checkbox toggles via HTMX.
 6. Multi-rep display collapses to "`{N} reps assigned ▾`"; single-rep stays

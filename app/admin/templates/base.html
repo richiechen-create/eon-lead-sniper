@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{% block title %}EON Lead Sniper{% endblock %}</title>
+  <title>{% block title %}EON Bullseye{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'&gt;&lt;rect width='32' height='32' rx='4' fill='%231a1f4d'/&gt;&lt;text x='16' y='22' font-family='Inter,sans-serif' font-size='14' font-weight='700' fill='%238c1d3e' text-anchor='middle'&gt;LS&lt;/text&gt;&lt;/svg&gt;">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'&gt;&lt;rect width='32' height='32' rx='4' fill='%231a1f4d'/&gt;&lt;text x='16' y='22' font-family='Inter,sans-serif' font-size='14' font-weight='700' fill='%238c1d3e' text-anchor='middle'&gt;EB&lt;/text&gt;&lt;/svg&gt;">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script>
@@ -80,7 +80,7 @@
         <div class="flex items-center space-x-6">
           <a href="/admin/" class="flex items-center space-x-2 font-semibold text-white tracking-tight">
             <span class="brand-mark"></span>
-            <span>EON Lead Sniper</span>
+            <span>EON Bullseye</span>
           </a>
           {% set active = (request.url.path or '/') %}
           {% set links = [

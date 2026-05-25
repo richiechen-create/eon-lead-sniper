@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     APOLLO_API_KEY: str = ""
     DATABASE_URL: str = "sqlite:///./lead_engine.sqlite"
     FROM_EMAIL: str = "leadengine@leadengine.eonreality.com"
-    FROM_NAME: str = "EON Lead Sniper"
+    FROM_NAME: str = "EON Bullseye"
 
     # SMTP (Gmail via App Password). FROM_EMAIL should match SMTP_USERNAME.
     SMTP_HOST: str = "smtp.gmail.com"

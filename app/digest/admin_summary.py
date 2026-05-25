@@ -54,7 +54,7 @@ class AdminSummary:
             )
 
         return (
-            f"EON Lead Sniper Daily Summary - {self.run_date.isoformat()}\n\n"
+            f"EON Bullseye Daily Summary - {self.run_date.isoformat()}\n\n"
             "ENRICHMENT\n"
             f"  Companies processed:    {self.companies_processed}\n"
             f"  New leads created:      {self.new_leads_created}\n"
@@ -189,7 +189,7 @@ def send_admin_summary(session: Session, today: Optional[date] = None) -> AdminS
     if settings.ADMIN_EMAIL and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
         send_email(
             to=[settings.ADMIN_EMAIL],
-            subject=f"EON Lead Sniper Daily Summary - {summary.run_date.isoformat()}",
+            subject=f"EON Bullseye Daily Summary - {summary.run_date.isoformat()}",
             text=summary.to_text(),
             retries=1,
         )

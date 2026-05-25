@@ -19,7 +19,7 @@ def require_internal_key(x_internal_key: str | None = Header(default=None)) -> N
         )
 
 
-app = FastAPI(title="EON Lead Sniper", version="0.1.0")
+app = FastAPI(title="EON Bullseye", version="0.1.0")
 
 _settings = get_settings()
 app.add_middleware(

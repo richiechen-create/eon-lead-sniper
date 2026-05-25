@@ -128,7 +128,7 @@ def run_enrichment(
                 logger.warning(msg)
                 run.errors.append({"company": company.domain, "error": msg})
                 _safe_admin_alert(
-                    subject="EON Lead Sniper: monthly Apollo credit budget exhausted",
+                    subject="EON Bullseye: monthly Apollo credit budget exhausted",
                     text=f"Halted enrichment. Credits used this month: {used}/{limit}.",
                 )
                 break
@@ -159,7 +159,7 @@ def run_enrichment(
         tb = traceback.format_exc()
         run.errors = (run.errors or []) + [{"top_level": str(exc), "traceback": tb}]
         _safe_admin_alert(
-            subject="EON Lead Sniper: enrichment run crashed",
+            subject="EON Bullseye: enrichment run crashed",
             text=f"Enrichment run {run.id} crashed.\n\n{tb}",
         )
         raise

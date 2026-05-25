@@ -67,7 +67,7 @@ def _build_text(rep_first_name: str, groups: list[CompanyGroup], total_leads: in
         lines.append("")
     lines.append("All leads attached as CSV.")
     lines.append("")
-    lines.append("-- EON Lead Sniper")
+    lines.append("-- EON Bullseye")
     return "\n".join(lines)
 
 
@@ -103,7 +103,7 @@ def _build_html(rep_first_name: str, groups: list[CompanyGroup], total_leads: in
             parts.append("</li>")
         parts.append("</ul>")
     parts.append("<p>All leads attached as CSV.</p>")
-    parts.append('<p style="color:#57606a;">-- EON Lead Sniper</p>')
+    parts.append('<p style="color:#57606a;">-- EON Bullseye</p>')
     parts.append("</body></html>")
     return "".join(parts)
 

@@ -18,7 +18,7 @@ services:
       - key: FROM_EMAIL
         sync: false
       - key: FROM_NAME
-        value: EON Lead Sniper
+        value: EON Bullseye
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -94,7 +94,7 @@ envVarGroups:
       - key: FROM_EMAIL
         sync: false
       - key: FROM_NAME
-        value: EON Lead Sniper
+        value: EON Bullseye
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT

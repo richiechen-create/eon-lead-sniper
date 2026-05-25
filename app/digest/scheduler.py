@@ -106,7 +106,7 @@ def run_digest_tick(session: Session, now_utc: Optional[datetime] = None) -> Dig
             logger.exception("digest send failed for %s", rep.email)
             run.errors = (run.errors or []) + [{"rep": rep.email, "error": str(exc)}]
             _safe_admin_alert(
-                subject=f"EON Lead Sniper: digest send failed for {rep.email}",
+                subject=f"EON Bullseye: digest send failed for {rep.email}",
                 text=f"Failed to send digest for {rep.email}: {exc}",
             )
             continue

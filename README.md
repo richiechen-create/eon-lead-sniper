@@ -1,4 +1,4 @@
-# EON Lead Sniper
+# EON Bullseye
 
 Backend service + single-operator admin UI for the EON Reality lead generation
 ops stack. (Backend package is still named `lead_engine/` — only user-visible
