@@ -221,11 +221,19 @@
 <div id="bulk-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
     <h2 class="text-lg font-semibold mb-2">Bulk import via CSV</h2>
+    <p class="text-xs text-gray-500 mb-2">
+      Drop a CSV file, click to choose one, or paste rows below.
+    </p>
+    <p class="text-xs text-gray-500 mb-1">
+      <strong>Required:</strong>
+      <code>company_name</code>, <code>domain</code>.
+    </p>
     <p class="text-xs text-gray-500 mb-4">
-      Drop a CSV file, click to choose one, or paste rows below. Columns:
-      <code>company_name, domain, industry, country, tier, max_contacts_per_run, targeting_profiles</code>.
-      Use <code>;</code> to separate multiple profile names. Rows are auto-assigned
-      to panels by their <code>industry</code> value.
+      <strong>Optional</strong> (editable later in the UI):
+      <code>industry</code>, <code>country</code>, <code>tier</code>,
+      <code>max_contacts_per_run</code> (default 10),
+      <code>targeting_profiles</code> (use <code>;</code> to separate multiple).
+      Rows are auto-assigned to panels by their <code>industry</code> value.
     </p>
 
     <div id="csv-dropzone"
@@ -242,7 +250,13 @@
     <form hx-post="/admin/companies/bulk-import">
       <textarea id="csv-textarea" name="csv_text" rows="10" required
                 class="w-full font-mono text-xs border border-gray-300 rounded px-3 py-2"
-                placeholder="company_name,domain,industry,country,tier,max_contacts_per_run,targeting_profiles
+                placeholder="Minimal:
+company_name,domain
+Acme,acme.com
+BetaCo,beta.com
+
+Full:
+company_name,domain,industry,country,tier,max_contacts_per_run,targeting_profiles
 Acme,acme.com,manufacturing,United States,tier1,10,ld_leadership;ehs_leadership"></textarea>
       <div class="flex justify-end space-x-2 mt-3">
         <button type="button" onclick="closeBulk()" class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
