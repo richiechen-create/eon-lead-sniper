@@ -48,7 +48,8 @@
         <th class="text-left px-3 py-2">Name</th>
         <th class="text-left px-3 py-2">Title</th>
         <th class="text-left px-3 py-2">Company</th>
-        <th class="text-left px-3 py-2">Email</th>
+        <th class="text-left px-3 py-2">Country</th>
+        <th class="text-left px-3 py-2">Email / LinkedIn</th>
         <th class="text-left px-3 py-2">Rep</th>
         <th class="text-left px-3 py-2">Status</th>
         <th class="text-left px-3 py-2">Routing</th>
@@ -66,7 +67,21 @@
             <span class="text-xs text-gray-400 block">{{ lead.company.domain }}</span>
           {% endif %}
         </td>
-        <td class="px-3 py-2 text-gray-700 font-mono text-xs">{{ lead.email or '—' }}</td>
+        <td class="px-3 py-2 text-gray-700 text-xs">
+          {% if lead.person_country %}{{ lead.person_country }}{% else %}<span class="text-gray-400">—</span>{% endif %}
+          {% if lead.person_city %}<span class="text-gray-400 block">{{ lead.person_city }}</span>{% endif %}
+        </td>
+        <td class="px-3 py-2 text-xs">
+          {% if lead.email %}
+            <a href="mailto:{{ lead.email }}" class="text-brand-crimson font-mono hover:underline">{{ lead.email }}</a>
+          {% else %}
+            <span class="text-gray-400">— no email</span>
+          {% endif %}
+          {% if lead.linkedin_url %}
+            <a href="{{ lead.linkedin_url }}" target="_blank" rel="noopener"
+               class="block text-brand-navy hover:underline">LinkedIn ↗</a>
+          {% endif %}
+        </td>
         <td class="px-3 py-2">
           <form hx-patch="/admin/leads/{{ lead.id }}/rep" hx-swap="none" class="inline">
             <select name="new_rep" onchange="this.form.requestSubmit()"
@@ -100,7 +115,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="px-3 py-6 text-center text-gray-500">No leads match these filters.</td></tr>
+      <tr><td colspan="9" class="px-3 py-6 text-center text-gray-500">No leads match these filters.</td></tr>
       {% endfor %}
     </tbody>
   </table>
