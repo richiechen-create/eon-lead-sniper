@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.admin.auth import require_admin
 from app.admin.templating import render
@@ -106,14 +106,14 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
             label = (industry or "").strip() or "(no segment)"
             segments.append({"label": label, "count": int(count)})
 
-        # Active reps with at least one pending+enriched lead — for the
-        # test-digest rep picker dropdown. Ordered by email so the same rep
-        # is "auto-picked" when the operator leaves the dropdown empty.
+        # Active reps with at least one pending+deliverable lead — for the
+        # test-digest rep picker dropdown. Deliverable means email OR
+        # linkedin_url (same filter as the digest scheduler).
         rep_lead_counts = dict(
             session.execute(
                 select(Lead.assigned_rep_email, func.count(Lead.id))
                 .where(Lead.delivery_status == "pending")
-                .where(Lead.email.is_not(None))
+                .where(or_(Lead.email.is_not(None), Lead.linkedin_url.is_not(None)))
                 .group_by(Lead.assigned_rep_email)
             ).all()
         )

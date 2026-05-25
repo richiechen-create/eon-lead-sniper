@@ -138,6 +138,75 @@ def test_weekend_skipped(session, monkeypatch):
     assert run.reps_emailed == 0
 
 
+def test_linkedin_only_leads_are_included(session, monkeypatch):
+    """A pending lead with linkedin_url but no email must be sent in the digest."""
+    rep = Rep(email="ny@x.com", name="NY", timezone="America/New_York", daily_lead_cap=10)
+    session.add(rep)
+    session.flush()
+    company = _seed_company(session)
+
+    # One with email, one LinkedIn-only — both should appear
+    _make_lead(session, company, rep_email="ny@x.com", apollo_person_id="with-email", email="x@x.com")
+    li_lead = Lead(
+        company_id=company.id,
+        apollo_person_id="linkedin-only",
+        full_name="No Email Person",
+        title="VP",
+        email=None,
+        linkedin_url="https://linkedin.com/in/no-email-person",
+        email_status="unverified",
+        assigned_rep_email="ny@x.com",
+        assigned_rep_name="Rep",
+        routing_status="rule_matched",
+        delivery_status="pending",
+        date_discovered=utcnow(),
+    )
+    session.add(li_lead)
+    session.flush()
+
+    sent = []
+    monkeypatch.setattr("app.digest.scheduler.send_email", lambda **k: sent.append(k) or {"ok": True})
+
+    now_utc = datetime(2026, 5, 20, 12, 0)  # Wed 08:00 EDT
+    run = run_digest_tick(session, now_utc=now_utc)
+
+    assert run.total_leads_delivered == 2
+    delivered = session.query(Lead).filter_by(delivery_status="delivered").all()
+    delivered_ids = {l.apollo_person_id for l in delivered}
+    assert delivered_ids == {"with-email", "linkedin-only"}
+
+
+def test_leads_without_email_or_linkedin_stay_out(session, monkeypatch):
+    """If neither email nor LinkedIn is present, the lead must NOT be sent."""
+    rep = Rep(email="ny@x.com", name="NY", timezone="America/New_York")
+    session.add(rep)
+    session.flush()
+    company = _seed_company(session)
+
+    naked = Lead(
+        company_id=company.id,
+        apollo_person_id="no-channel",
+        full_name="Unreachable",
+        title="VP",
+        email=None,
+        linkedin_url=None,
+        email_status="unverified",
+        assigned_rep_email="ny@x.com",
+        assigned_rep_name="Rep",
+        routing_status="rule_matched",
+        delivery_status="pending",
+        date_discovered=utcnow(),
+    )
+    session.add(naked)
+    session.flush()
+
+    monkeypatch.setattr("app.digest.scheduler.send_email", lambda **k: {"ok": True})
+
+    now_utc = datetime(2026, 5, 20, 12, 0)
+    run = run_digest_tick(session, now_utc=now_utc)
+    assert run.total_leads_delivered == 0
+
+
 def test_zero_leads_no_email(session, monkeypatch):
     rep = Rep(email="ny@x.com", name="NY", timezone="America/New_York")
     session.add(rep)

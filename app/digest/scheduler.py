@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.digest.builder import BuiltDigest, build_digest
@@ -42,12 +42,19 @@ def _is_eligible(rep: Rep, now_utc: datetime) -> Optional[datetime]:
 
 
 def _pending_leads_for_rep(session: Session, rep: Rep) -> list[Lead]:
+    """Pending leads the rep can actually act on — email OR LinkedIn present.
+
+    LinkedIn-only leads are still deliverable: the rep can reach out via
+    LinkedIn from the digest. The Apollo people-match step often returns
+    LinkedIn URLs even when the email is withheld, so this widens the funnel
+    without compromising deliverability.
+    """
     cap = rep.daily_lead_cap
     stmt = (
         select(Lead)
         .where(Lead.assigned_rep_email == rep.email)
         .where(Lead.delivery_status == "pending")
-        .where(Lead.email.is_not(None))
+        .where(or_(Lead.email.is_not(None), Lead.linkedin_url.is_not(None)))
         .order_by(Lead.date_discovered.asc())
     )
     if cap is not None and cap > 0:

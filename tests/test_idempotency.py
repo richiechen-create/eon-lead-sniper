@@ -106,7 +106,8 @@ def test_do_not_contact_by_apollo_id_prevents_match_call(session):
     assert client.match_calls == []
 
 
-def test_lead_without_email_is_skipped_status(session):
+def test_lead_without_email_but_with_linkedin_is_pending(session):
+    """No email but LinkedIn URL present → still deliverable in the digest."""
     _seed(session)
     people = {"acme.com": [FakePerson(id="px", email=None, email_status="unverified")]}
     client = FakeApolloClient(session, people)
@@ -114,6 +115,24 @@ def test_lead_without_email_is_skipped_status(session):
     assert summary.new_leads_created == 1
     lead = session.query(Lead).filter_by(apollo_person_id="px").one()
     assert lead.email is None
+    assert lead.linkedin_url  # FakePerson defaults this to a real URL
+    assert lead.delivery_status == "pending"
+
+
+def test_lead_without_email_and_without_linkedin_is_skipped(session):
+    """No email AND no LinkedIn → un-reachable, status='skipped'."""
+    _seed(session)
+    people = {
+        "acme.com": [
+            FakePerson(id="py", email=None, email_status="unverified", linkedin_url=None)
+        ]
+    }
+    client = FakeApolloClient(session, people)
+    summary = run_enrichment(session, apollo_client=client)
+    assert summary.new_leads_created == 1
+    lead = session.query(Lead).filter_by(apollo_person_id="py").one()
+    assert lead.email is None
+    assert lead.linkedin_url is None
     assert lead.delivery_status == "skipped"
 
 

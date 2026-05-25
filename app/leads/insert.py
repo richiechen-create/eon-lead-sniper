@@ -61,7 +61,12 @@ def insert_lead(
     if dnc is not None:
         return None
 
-    delivery_status = "pending" if candidate.email else "skipped"
+    # A lead is "deliverable" if the rep can reach them somehow — email OR
+    # LinkedIn. Apollo often returns the LinkedIn URL even when the email is
+    # withheld (privacy, opt-out, missing coverage), and the rep can still
+    # outreach via LinkedIn from the digest.
+    deliverable = bool(candidate.email or candidate.linkedin_url)
+    delivery_status = "pending" if deliverable else "skipped"
 
     lead = Lead(
         company_id=candidate.company_id,
