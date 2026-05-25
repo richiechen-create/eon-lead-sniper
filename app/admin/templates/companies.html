@@ -222,16 +222,31 @@
   <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
     <h2 class="text-lg font-semibold mb-2">Bulk import via CSV</h2>
     <p class="text-xs text-gray-500 mb-4">
-      Paste a header row + rows. Columns: <code>company_name, domain, industry, country, tier, max_contacts_per_run, targeting_profiles</code>. Use <code>;</code> to separate multiple profile names. Rows are auto-assigned to panels by their <code>industry</code> value.
+      Drop a CSV file, click to choose one, or paste rows below. Columns:
+      <code>company_name, domain, industry, country, tier, max_contacts_per_run, targeting_profiles</code>.
+      Use <code>;</code> to separate multiple profile names. Rows are auto-assigned
+      to panels by their <code>industry</code> value.
     </p>
+
+    <div id="csv-dropzone"
+         class="mb-3 border-2 border-dashed border-brand-border rounded-lg px-4 py-6 text-center cursor-pointer hover:bg-brand-navy-50 transition">
+      <p class="text-sm text-brand-ink">
+        <span class="font-medium">Drop a CSV file here</span>
+        or <span class="text-brand-crimson underline">click to choose</span>
+      </p>
+      <p class="text-xs text-brand-muted mt-1">Or paste rows into the box below.</p>
+      <p id="csv-file-info" class="text-xs text-brand-navy mt-2 hidden font-mono"></p>
+      <input id="csv-file-input" type="file" accept=".csv,text/csv,text/plain" class="hidden"/>
+    </div>
+
     <form hx-post="/admin/companies/bulk-import">
-      <textarea name="csv_text" rows="10" required
+      <textarea id="csv-textarea" name="csv_text" rows="10" required
                 class="w-full font-mono text-xs border border-gray-300 rounded px-3 py-2"
                 placeholder="company_name,domain,industry,country,tier,max_contacts_per_run,targeting_profiles
 Acme,acme.com,manufacturing,United States,tier1,10,ld_leadership;ehs_leadership"></textarea>
       <div class="flex justify-end space-x-2 mt-3">
         <button type="button" onclick="closeBulk()" class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
-        <button class="bg-gray-900 text-white text-sm px-4 py-1.5 rounded hover:bg-gray-800">Import</button>
+        <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Import</button>
       </div>
     </form>
   </div>
@@ -277,6 +292,65 @@ document.querySelectorAll('.segment-header').forEach(h => {
   });
 });
 applyCollapsedState();
+
+// Bulk-import CSV file drop / picker. Reads the file client-side and dumps
+// its contents into the existing #csv-textarea so the operator can preview
+// before clicking Import. No backend changes — the existing form still POSTs
+// the textarea content as csv_text.
+(function() {
+  const dz = document.getElementById('csv-dropzone');
+  const fileInput = document.getElementById('csv-file-input');
+  const info = document.getElementById('csv-file-info');
+  const ta = document.getElementById('csv-textarea');
+  if (!dz || !fileInput || !ta) return;
+
+  function humanSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function loadFile(file) {
+    if (!file) return;
+    const maxBytes = 5 * 1024 * 1024; // 5 MB cap
+    if (file.size > maxBytes) {
+      alert('File too large (' + humanSize(file.size) + '). Limit is 5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      ta.value = e.target.result || '';
+      const rows = (ta.value.match(/\n/g) || []).length; // includes header
+      info.textContent = file.name + ' · ' + humanSize(file.size) +
+        ' · ~' + Math.max(0, rows) + ' row(s) including header';
+      info.classList.remove('hidden');
+    };
+    reader.onerror = () => alert('Could not read file: ' + reader.error);
+    reader.readAsText(file, 'utf-8');
+  }
+
+  dz.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => loadFile(e.target.files[0]));
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    dz.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.add('bg-brand-navy-50', 'border-brand-crimson');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    dz.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.remove('bg-brand-navy-50', 'border-brand-crimson');
+    });
+  });
+  dz.addEventListener('drop', (e) => {
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  });
+})();
 
 function openAdd(industry, locked) {
   const modal = document.getElementById('add-modal');
