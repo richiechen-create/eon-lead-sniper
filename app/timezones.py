@@ -11,11 +11,29 @@ from functools import lru_cache
 from zoneinfo import ZoneInfo, available_timezones
 
 
+# Real continents + ocean regions in the modern IANA convention. Anything
+# with a different prefix is a legacy alias we keep out of the dropdown.
+# `is_valid_timezone()` still accepts the aliases (via ZoneInfo fallback) so
+# existing data isn't rejected — this filter only affects what we OFFER.
+_CANONICAL_REGIONS = {
+    "Africa", "America", "Antarctica", "Arctic",
+    "Asia", "Atlantic", "Australia", "Europe", "Indian", "Pacific",
+}
+
+
 @lru_cache(maxsize=1)
 def canonical_timezones() -> list[str]:
-    zones = sorted(available_timezones())
-    if "UTC" in zones:
-        zones.remove("UTC")
+    """Return the dropdown-friendly canonical IANA timezones.
+
+    `zoneinfo.available_timezones()` includes both modern `Continent/City`
+    names (e.g. `Asia/Singapore`) and legacy aliases for backward compat
+    (`Singapore`, `Japan`, `US/Eastern`, `Brazil/East`, `Etc/GMT+5`). We keep
+    only UTC + the modern `Continent/City` set.
+    """
+    zones = sorted(
+        z for z in available_timezones()
+        if "/" in z and z.split("/", 1)[0] in _CANONICAL_REGIONS
+    )
     return ["UTC"] + zones
 
 
