@@ -8,7 +8,7 @@ from app.admin.templating import render
 from app.apollo.budget import budget_status
 from app.db import session_scope
 from app.maintenance import scan_country_drift
-from app.models import DigestRun, EnrichmentRun, Lead, Rep
+from app.models import Company, DigestRun, EnrichmentRun, Lead, Rep
 
 router = APIRouter()
 
@@ -91,6 +91,21 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
 
         drift = scan_country_drift(session, log=False)
 
+        # Distinct industries among active companies, with count, for the
+        # per-segment enrichment dropdown.
+        seg_rows = list(
+            session.execute(
+                select(Company.industry, func.count(Company.id))
+                .where(Company.is_active == True)  # noqa: E712
+                .group_by(Company.industry)
+                .order_by(Company.industry)
+            ).all()
+        )
+        segments = []
+        for industry, count in seg_rows:
+            label = (industry or "").strip() or "(no segment)"
+            segments.append({"label": label, "count": int(count)})
+
     return render(
         request,
         "dashboard.html",
@@ -112,4 +127,5 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
         drift_country_count=len(drift["bad_countries"]),
         drift_leads_affected=drift["leads_affected"],
         drift_examples=drift["bad_countries"][:5],
+        segments=segments,
     )

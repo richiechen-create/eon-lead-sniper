@@ -32,21 +32,11 @@
         {% endif %}
         <span class="text-xs text-brand-muted">{{ seg.active_count }} active</span>
       </div>
-      <div class="flex items-center space-x-2">
-        {% if seg.active_count > 0 %}
-        <button type="button"
-                onclick="event.stopPropagation(); enrichSegment('{{ seg.label | replace("'", "\\'") }}', {{ seg.active_count }}, this)"
-                class="text-sm bg-white border border-brand-border text-brand-ink px-3 py-1 rounded hover:bg-brand-navy-50"
-                title="Run enrichment for {{ seg.active_count }} active company(s) in {{ seg.label }}">
-          Enrich
-        </button>
-        {% endif %}
-        <button type="button"
-                onclick="event.stopPropagation(); openAdd('{{ seg.label | replace("'", "\\'") }}', true)"
-                class="text-sm bg-brand-crimson text-white px-3 py-1 rounded hover:bg-brand-crimson-700 font-medium">
-          + Add company
-        </button>
-      </div>
+      <button type="button"
+              onclick="event.stopPropagation(); openAdd('{{ seg.label | replace("'", "\\'") }}', true)"
+              class="text-sm bg-brand-crimson text-white px-3 py-1 rounded hover:bg-brand-crimson-700 font-medium">
+        + Add company
+      </button>
     </header>
 
     <div class="segment-body overflow-x-auto">
@@ -287,29 +277,6 @@ document.querySelectorAll('.segment-header').forEach(h => {
   });
 });
 applyCollapsedState();
-
-async function enrichSegment(industry, activeCount, btn) {
-  if (!window.confirm(
-        'Run enrichment for ' + activeCount + ' active company(ies) in "' + industry + '"?\n\n' +
-        'This will hit Apollo and consume credits.'
-      )) return;
-  btn.disabled = true;
-  const original = btn.textContent;
-  btn.textContent = 'Running…';
-  try {
-    const url = '/admin/triggers/enrichment?industry=' + encodeURIComponent(industry);
-    const resp = await fetch(url, { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || 'Failed');
-    alert('Done.\n\n' + JSON.stringify(data, null, 2));
-    location.reload();
-  } catch (e) {
-    alert('Error: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = original;
-  }
-}
 
 function openAdd(industry, locked) {
   const modal = document.getElementById('add-modal');
