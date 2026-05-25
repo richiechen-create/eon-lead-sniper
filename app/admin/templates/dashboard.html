@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · EON Lead Sniper{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-semibold text-brand-ink page-heading">Dashboard</h1>
+  <p class="text-sm text-brand-muted">{{ today.isoformat() }}</p>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white rounded-lg shadow p-4">
+    <p class="text-xs text-gray-500 uppercase tracking-wider">New leads today</p>
+    <p class="text-2xl font-semibold text-gray-900 mt-1">{{ new_leads_today }}</p>
+  </div>
+  <div class="bg-white rounded-lg shadow p-4">
+    <p class="text-xs text-gray-500 uppercase tracking-wider">Enriched today</p>
+    <p class="text-2xl font-semibold text-gray-900 mt-1">{{ contacts_enriched_today }}</p>
+  </div>
+  <div class="bg-white rounded-lg shadow p-4">
+    <p class="text-xs text-gray-500 uppercase tracking-wider">Credits today</p>
+    <p class="text-2xl font-semibold text-gray-900 mt-1">{{ credits_today }}</p>
+  </div>
+  <div class="bg-white rounded-lg shadow p-4">
+    <p class="text-xs text-gray-500 uppercase tracking-wider">Companies processed</p>
+    <p class="text-2xl font-semibold text-gray-900 mt-1">{{ companies_processed_today }}</p>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+  <div class="bg-white rounded-lg shadow p-4 lg:col-span-2">
+    <p class="text-sm font-medium text-gray-700">Credit usage this month</p>
+    <p class="text-xs text-gray-500 mb-3">{{ "{:,}".format(credits_month) }} / {{ "{:,}".format(credits_limit) }} ({{ credits_pct }}%)</p>
+    <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+      <div class="h-3 {{ 'bg-red-500' if credits_pct >= 90 else 'bg-amber-500' if credits_pct >= 70 else 'bg-blue-500' }}"
+           style="width: {{ credits_pct if credits_pct <= 100 else 100 }}%"></div>
+    </div>
+    <p class="text-xs text-gray-500 mt-3">Fallback rate (7d): {{ fallback_rate }}%</p>
+  </div>
+
+  <div class="bg-white rounded-lg shadow p-4">
+    <p class="text-sm font-medium text-gray-700 mb-3">Manual triggers</p>
+    <div class="space-y-2">
+      <button onclick="confirmAndRun('/admin/triggers/enrichment', 'Run enrichment now? This will hit Apollo and consume credits.', this)"
+              class="w-full bg-brand-crimson text-white text-sm py-2 rounded hover:bg-brand-crimson-700 font-medium">
+        Run enrichment now
+      </button>
+      <button onclick="confirmAndRun('/admin/triggers/digest', 'Run a digest tick now? Reps whose local time is 08:00 will receive emails.', this)"
+              class="w-full bg-brand-navy text-white text-sm py-2 rounded hover:bg-brand-navy-700 font-medium">
+        Run digest now
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+  <div class="bg-white rounded-lg shadow">
+    <div class="px-4 py-3 border-b border-gray-200">
+      <p class="text-sm font-medium text-gray-700">Pending leads per rep</p>
+    </div>
+    {% if pending_per_rep %}
+    <table class="w-full text-sm">
+      <thead class="text-xs text-gray-500 uppercase">
+        <tr><th class="text-left px-4 py-2">Rep</th><th class="text-right px-4 py-2">Pending</th></tr>
+      </thead>
+      <tbody>
+      {% for email, count in pending_per_rep %}
+        <tr class="border-t border-gray-100">
+          <td class="px-4 py-2">
+            <a href="/admin/leads?rep={{ email }}&status=pending" class="text-blue-600 hover:underline">{{ email }}</a>
+          </td>
+          <td class="px-4 py-2 text-right font-mono">{{ count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-6 text-sm text-gray-500">No pending leads.</p>
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-lg shadow">
+    <div class="px-4 py-3 border-b border-gray-200">
+      <p class="text-sm font-medium text-gray-700">Last 7 days</p>
+    </div>
+    {% if leads_per_day %}
+    <table class="w-full text-sm">
+      <thead class="text-xs text-gray-500 uppercase">
+        <tr><th class="text-left px-4 py-2">Day</th><th class="text-right px-4 py-2">Leads</th></tr>
+      </thead>
+      <tbody>
+      {% for d, c in leads_per_day %}
+        <tr class="border-t border-gray-100">
+          <td class="px-4 py-2 font-mono">{{ d }}</td>
+          <td class="px-4 py-2 text-right font-mono">{{ c }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-6 text-sm text-gray-500">No data in the last 7 days yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="bg-white rounded-lg shadow mb-6">
+  <div class="px-4 py-3 border-b border-brand-border flex items-center justify-between">
+    <p class="text-sm font-medium text-brand-ink">Data hygiene</p>
+    {% if drift_country_count > 0 %}
+      <span class="text-xs px-2 py-0.5 rounded bg-brand-crimson-50 text-brand-crimson">{{ drift_country_count }} non-canonical</span>
+    {% else %}
+      <span class="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">healthy</span>
+    {% endif %}
+  </div>
+  <div class="px-4 py-3">
+    {% if drift_country_count > 0 %}
+      <p class="text-sm text-brand-ink">
+        {{ drift_country_count }} distinct country value{{ '' if drift_country_count == 1 else 's' }}
+        in <code>leads.person_country</code> don't match Apollo's canonical list — {{ drift_leads_affected }} lead(s) affected.
+      </p>
+      <p class="text-xs text-brand-muted mt-2">
+        Examples: {{ drift_examples | join(', ') }}{% if drift_country_count > drift_examples | length %}, …{% endif %}
+      </p>
+      <p class="text-xs text-brand-muted mt-2">
+        Fix by editing <code>APOLLO_OVERRIDES</code> in <code>app/countries.py</code> and redeploying.
+      </p>
+    {% else %}
+      <p class="text-sm text-brand-muted">All lead countries match the canonical Apollo list.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="bg-white rounded-lg shadow">
+  <div class="px-4 py-3 border-b border-gray-200">
+    <p class="text-sm font-medium text-gray-700">Recent errors</p>
+  </div>
+  {% if recent_errors %}
+  <ul class="divide-y divide-gray-100">
+    {% for err in recent_errors %}
+    <li class="px-4 py-2 text-sm">
+      <span class="text-xs text-gray-400">{{ err.when }}</span>
+      <span class="text-xs uppercase ml-2 text-gray-500">{{ err.source }}</span>
+      <pre class="mt-1 text-xs text-gray-700 whitespace-pre-wrap">{{ err.detail }}</pre>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="px-4 py-6 text-sm text-gray-500">No errors today.</p>
+  {% endif %}
+</div>
+
+<script>
+async function confirmAndRun(url, message, btn) {
+  if (!window.confirm(message)) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Running...';
+  try {
+    const resp = await fetch(url, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    alert('Done.\n\n' + JSON.stringify(data, null, 2));
+    location.reload();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+</script>
+{% endblock %}

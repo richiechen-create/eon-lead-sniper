@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Targeting profiles · EON Lead Sniper{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold text-brand-ink page-heading">Targeting profiles</h1>
+  <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
+          class="text-sm bg-brand-crimson text-white px-3 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add profile</button>
+</div>
+
+<div class="space-y-4">
+  {% for p in profiles %}
+  <div class="bg-white shadow rounded-lg p-4">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-900">{{ p.name }}</h2>
+        <p class="text-xs text-gray-500">{{ counts.get(p.id, 0) }} companies using this</p>
+      </div>
+      <form hx-patch="/admin/targeting-profiles/{{ p.id }}" hx-swap="none">
+        <input type="hidden" name="is_active" value="{{ 'false' if p.is_active else 'true' }}"/>
+        <button class="text-xs px-2 py-0.5 rounded {{ 'bg-emerald-100 text-emerald-700' if p.is_active else 'bg-gray-100 text-gray-500' }}">
+          {{ 'active' if p.is_active else 'inactive' }}
+        </button>
+      </form>
+    </div>
+    <form hx-patch="/admin/targeting-profiles/{{ p.id }}" hx-swap="none" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Titles (one per line)</label>
+        <textarea name="titles" rows="4"
+                  class="w-full font-mono text-xs border border-gray-300 rounded px-2 py-1">{{ p.titles | join('\n') }}</textarea>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Seniorities (comma-sep)</label>
+          <input name="seniorities" value="{{ p.seniorities | join(', ') }}"
+                 class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Departments (comma-sep)</label>
+          <input name="departments" value="{{ p.departments | join(', ') }}"
+                 class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Locations (comma-sep)</label>
+          <input name="locations" value="{{ p.locations | join(', ') }}"
+                 class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Keywords (comma-sep)</label>
+          <input name="keywords" value="{{ p.keywords | join(', ') }}"
+                 class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+        </div>
+      </div>
+      <button class="text-sm bg-brand-crimson text-white px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Save</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="text-sm text-gray-500">No profiles yet.</p>
+  {% endfor %}
+</div>
+
+<div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+    <h2 class="text-lg font-semibold mb-4">Add targeting profile</h2>
+    <form hx-post="/admin/targeting-profiles" class="space-y-3">
+      <input name="name" placeholder="profile_name (e.g. ld_leadership)" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <textarea name="titles" rows="4" placeholder="Title 1&#10;Title 2&#10;..."
+                class="w-full font-mono text-xs border border-gray-300 rounded px-2 py-1"></textarea>
+      <input name="seniorities" placeholder="c_suite, vp, head, director" class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+      <input name="departments" placeholder="departments (comma-sep)" class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+      <input name="locations" placeholder="locations (comma-sep)" class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+      <input name="keywords" placeholder="keywords (comma-sep)" class="w-full text-xs border border-gray-300 rounded px-2 py-1"/>
+      <div class="flex justify-end space-x-2">
+        <button type="button" onclick="document.getElementById('add-modal').classList.add('hidden')"
+                class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
+        <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

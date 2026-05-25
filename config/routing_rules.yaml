@@ -1,0 +1,34 @@
+# Lower priority number = evaluated first.
+
+# Sales team: oil and gas only
+- priority: 10
+  name: "Oil & gas, US/Canada/Mexico -> Sales US"
+  conditions:
+    company_industry: ["oil and gas"]
+    company_country:  ["United States", "Canada", "Mexico"]
+  assigned_rep_email: sales_us@eonreality.com
+  assigned_rep_name: TBD
+
+- priority: 11
+  name: "Oil & gas, UK/EU -> Sales EMEA"
+  conditions:
+    company_industry: ["oil and gas"]
+    company_country:  ["United Kingdom", "Norway", "Netherlands"]
+  assigned_rep_email: sales_emea@eonreality.com
+  assigned_rep_name: TBD
+
+# Lead gen team: everything else, by sector + region
+- priority: 20
+  name: "Manufacturing, Americas -> Lead Gen Mfg Americas"
+  conditions:
+    company_industry: ["manufacturing"]
+    company_country:  ["United States", "Canada", "Mexico"]
+  assigned_rep_email: leadgen_mfg_americas@eonreality.com
+  assigned_rep_name: TBD
+
+# Catch-all (always last)
+- priority: 9999
+  name: "Fallback -> Dan"
+  conditions: {}
+  assigned_rep_email: dan@eonreality.com
+  assigned_rep_name: Dan

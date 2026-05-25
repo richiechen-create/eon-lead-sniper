@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Sign in · EON Lead Sniper{% endblock %}
+{% block content %}
+<div class="fixed inset-0 bg-gradient-to-br from-brand-navy via-brand-navy to-brand-crimson flex items-center justify-center p-4">
+  <div class="w-full max-w-sm bg-brand-surface shadow-xl rounded-lg p-6">
+    <div class="flex items-center space-x-2 mb-1">
+      <span class="brand-mark"></span>
+      <h1 class="text-xl font-semibold text-brand-ink tracking-tight">EON Lead Sniper</h1>
+    </div>
+    <p class="text-sm text-brand-muted mb-6">Sign in to the admin console.</p>
+    {% if error %}
+    <div class="mb-4 p-3 bg-brand-crimson-50 border border-brand-crimson text-brand-crimson text-sm rounded">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/admin/login" class="space-y-4">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div>
+        <label class="block text-sm font-medium text-brand-ink">Username</label>
+        <input name="username" type="text" autocomplete="username" required
+               class="mt-1 w-full border border-brand-border rounded px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-brand-ink">Password</label>
+        <input name="password" type="password" autocomplete="current-password" required
+               class="mt-1 w-full border border-brand-border rounded px-3 py-2">
+      </div>
+      <button class="w-full bg-brand-crimson text-white py-2 rounded hover:bg-brand-crimson-700 font-medium">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+<div id="profile-pills-{{ company.id }}" class="profile-pills inline-flex flex-wrap gap-1 items-center">
+  {% if linked_profiles %}
+    {% for p in linked_profiles[:2] %}
+      <span class="inline-flex items-center bg-brand-navy-50 text-brand-navy text-xs rounded px-1.5 py-0.5">
+        {{ p.name }}
+        <button type="button"
+                aria-label="Remove {{ p.name }}"
+                onclick="event.stopPropagation();"
+                hx-delete="/admin/companies/{{ company.id }}/profiles/{{ p.id }}"
+                hx-target="#profile-pills-{{ company.id }}"
+                hx-swap="outerHTML"
+                class="ml-1 text-brand-muted hover:text-brand-crimson leading-none">&times;</button>
+      </span>
+    {% endfor %}
+    {% if linked_profiles | length > 2 %}
+      <span class="text-xs text-brand-muted">+{{ linked_profiles | length - 2 }} more</span>
+    {% endif %}
+  {% else %}
+    <span class="text-xs text-brand-muted hover:text-brand-ink">+ Add profiles</span>
+  {% endif %}
+</div>

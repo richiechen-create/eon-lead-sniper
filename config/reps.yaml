@@ -1,0 +1,19 @@
+- email: dan@eonreality.com
+  name: Dan
+  team: ops
+  timezone: Asia/Singapore
+  # Default fallback rep — no daily_lead_cap, gets everything unmatched.
+
+# Sales (oil and gas only) — to be populated with real reps
+- email: sales_us@eonreality.com
+  name: TBD
+  team: sales
+  timezone: America/New_York
+  daily_lead_cap: 15
+
+# Lead Gen (manufacturing, aerospace, defense, healthcare, etc.)
+- email: leadgen_mfg_americas@eonreality.com
+  name: TBD
+  team: lead_gen
+  timezone: America/New_York
+  daily_lead_cap: 15

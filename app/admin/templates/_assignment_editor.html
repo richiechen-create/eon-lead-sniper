@@ -1,0 +1,157 @@
+<div class="bg-brand-navy-50 border-t border-brand-border p-4">
+  <div class="flex items-center justify-between mb-3">
+    <p class="text-sm font-medium text-brand-ink">
+      Rep assignments for <span class="font-semibold">{{ company.company_name }}</span>
+    </p>
+    <div class="relative overflow-wrap">
+      <button type="button"
+              onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle('hidden');"
+              onblur="setTimeout(() => this.nextElementSibling.classList.add('hidden'), 150)"
+              class="text-brand-muted hover:text-brand-ink px-2 py-0.5 rounded text-lg leading-none">
+        &middot;&middot;&middot;
+      </button>
+      <div class="hidden absolute right-0 top-full mt-1 bg-white border border-brand-border rounded shadow-lg w-56 z-10">
+        {% if rows %}
+        <button
+          hx-post="/admin/companies/{{ company.id }}/assignments/apply-to-segment"
+          hx-confirm="Apply these {{ rows | length }} assignment(s) to every active company in the {{ company.industry or 'current' }} segment?"
+          hx-swap="none"
+          class="block w-full text-left text-sm text-brand-ink hover:bg-brand-navy-50 px-3 py-2">
+          Apply to all in segment
+        </button>
+        {% else %}
+        <p class="text-xs text-brand-muted px-3 py-2">Add at least one assignment to enable bulk actions.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if rows %}
+  <table class="w-full text-sm bg-white border border-brand-border rounded mb-3">
+    <tbody>
+      {% for row in rows %}
+      <tr class="border-t border-brand-border first:border-t-0">
+        <td class="px-3 py-1.5 font-mono text-xs w-1/3">
+          {{ "Any (wildcard)" if row.assignment.lead_country == '*' else row.assignment.lead_country }}
+        </td>
+        <td class="px-3 py-1.5 align-middle">
+          <span class="text-brand-ink mr-1">&rarr;</span>
+          <form
+            hx-post="/admin/companies/{{ company.id }}/assignments"
+            hx-target="closest .assignment-editor-container"
+            hx-swap="innerHTML"
+            class="inline">
+            <input type="hidden" name="lead_country" value="{{ row.assignment.lead_country }}"/>
+            <select name="rep_email" onchange="this.form.requestSubmit()"
+                    class="border border-brand-border rounded px-2 py-0.5 text-sm bg-white">
+              {% for team, team_reps in reps_by_team.items() %}
+                <optgroup label="{{ team }}">
+                  {% for r in team_reps %}
+                    <option value="{{ r.email }}" {% if r.email == row.assignment.rep_email %}selected{% endif %}>
+                      {{ r.name }} ({{ r.email }})
+                    </option>
+                  {% endfor %}
+                </optgroup>
+              {% endfor %}
+              {% if row.orphaned %}
+                <option value="{{ row.assignment.rep_email }}" selected>
+                  {{ row.assignment.rep_email }} (orphaned)
+                </option>
+              {% endif %}
+            </select>
+          </form>
+          {% if row.team and not row.orphaned %}
+            <span class="text-xs text-brand-muted ml-1">({{ row.team }})</span>
+          {% endif %}
+          {% if row.orphaned %}<span class="ml-2 text-xs text-brand-crimson">(orphaned)</span>{% endif %}
+        </td>
+        <td class="px-3 py-1.5 text-right">
+          <button
+            hx-delete="/admin/companies/{{ company.id }}/assignments/{{ row.assignment.id }}"
+            hx-target="closest .assignment-editor-container"
+            hx-swap="innerHTML"
+            class="text-xs text-brand-crimson hover:text-brand-crimson-700">
+            Remove
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-xs text-brand-muted mb-3">
+    No country-specific assignments. Falls through to segment rules.
+  </p>
+  {% endif %}
+
+  <div class="add-toggle">
+    <button type="button"
+            onclick="
+              const wrap = this.closest('.add-toggle');
+              wrap.querySelector('.add-form').classList.remove('hidden');
+              this.classList.add('hidden');
+              setTimeout(() => wrap.querySelector('input[name=lead_country]').focus(), 0);
+            "
+            class="add-show text-xs text-brand-crimson hover:underline font-medium">
+      + Add country assignment
+    </button>
+
+    <div class="add-form hidden mt-3"
+         onkeydown="if (event.key === 'Escape') {
+           event.preventDefault();
+           const wrap = this.closest('.add-toggle');
+           this.classList.add('hidden');
+           wrap.querySelector('.add-show').classList.remove('hidden');
+           this.querySelector('form').reset();
+         }">
+      <form
+        hx-post="/admin/companies/{{ company.id }}/assignments"
+        hx-target="closest .assignment-editor-container"
+        hx-swap="innerHTML"
+        class="flex flex-wrap items-end gap-2 bg-white border border-brand-border rounded p-3">
+        <div class="flex-1 min-w-[12rem]">
+          <label class="block text-xs font-medium text-brand-muted mb-1">Country (or * for any)</label>
+          <input name="lead_country" list="canonical-countries-with-wildcard-{{ company.id }}" required
+                 placeholder="United States"
+                 class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+        </div>
+        <div class="flex-1 min-w-[14rem]">
+          <label class="block text-xs font-medium text-brand-muted mb-1">Rep</label>
+          <select name="rep_email" required
+                  class="w-full border border-brand-border rounded px-2 py-1 text-sm">
+            <option value="">Select rep…</option>
+            {% for team, team_reps in reps_by_team.items() %}
+              <optgroup label="{{ team }}">
+                {% for r in team_reps %}
+                  <option value="{{ r.email }}">{{ r.name }} ({{ r.email }})</option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="bg-brand-crimson text-white text-sm px-3 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">
+          Add
+        </button>
+        <button type="button"
+                onclick="
+                  const wrap = this.closest('.add-toggle');
+                  wrap.querySelector('.add-form').classList.add('hidden');
+                  wrap.querySelector('.add-show').classList.remove('hidden');
+                  this.closest('form').reset();
+                "
+                class="text-brand-muted hover:text-brand-ink text-lg leading-none px-2 py-1"
+                aria-label="Cancel">&times;</button>
+      </form>
+      <p class="text-xs text-brand-muted mt-2">
+        Anything not listed falls through to the segment rules.
+        <code>*</code> applies when no country-specific row matches.
+      </p>
+    </div>
+  </div>
+
+  <datalist id="canonical-countries-with-wildcard-{{ company.id }}">
+    <option value="*" label="Any (wildcard)"></option>
+    {% for c in canonical_countries %}<option value="{{ c }}">{% endfor %}
+  </datalist>
+</div>
+

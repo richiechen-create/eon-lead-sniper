@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Fallback queue' if fallback_view else 'Leads' }} · EON Lead Sniper{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold text-brand-ink page-heading">
+    {% if fallback_view %}Fallback triage{% else %}Leads{% endif %}
+  </h1>
+  {% if not fallback_view %}
+  <a href="/admin/leads/fallback" class="text-sm bg-amber-100 text-amber-800 px-3 py-1.5 rounded hover:bg-amber-200">
+    Fallback queue →
+  </a>
+  {% endif %}
+</div>
+
+{% if not fallback_view %}
+<form method="get" action="/admin/leads" class="bg-white shadow rounded-lg p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+  <input name="search" placeholder="Search name / title / email" value="{{ search }}"
+         class="border border-gray-300 rounded px-3 py-1.5 text-sm lg:col-span-2"/>
+  <input name="company" placeholder="Company name" value="{{ company_filter }}"
+         class="border border-gray-300 rounded px-3 py-1.5 text-sm"/>
+  <select name="rep" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+    <option value="">Any rep</option>
+    {% for r in reps %}
+      <option value="{{ r.email }}" {% if rep_filter == r.email %}selected{% endif %}>{{ r.email }}</option>
+    {% endfor %}
+  </select>
+  <select name="status" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+    <option value="">Any status</option>
+    {% for s in ['pending', 'delivered', 'skipped'] %}
+      <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="routing_status" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+    <option value="">Any routing</option>
+    {% for s in ['matched', 'fallback'] %}
+      <option value="{{ s }}" {% if routing_status_filter == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Filter</button>
+</form>
+{% endif %}
+
+<div class="bg-white shadow rounded-lg overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="text-xs uppercase text-gray-500 bg-gray-50">
+      <tr>
+        <th class="text-left px-3 py-2">Name</th>
+        <th class="text-left px-3 py-2">Title</th>
+        <th class="text-left px-3 py-2">Company</th>
+        <th class="text-left px-3 py-2">Email</th>
+        <th class="text-left px-3 py-2">Rep</th>
+        <th class="text-left px-3 py-2">Status</th>
+        <th class="text-left px-3 py-2">Routing</th>
+        <th class="text-right px-3 py-2">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lead in leads %}
+      <tr class="border-t border-gray-100">
+        <td class="px-3 py-2">{{ lead.full_name or '—' }}</td>
+        <td class="px-3 py-2 text-gray-600">{{ lead.title or '—' }}</td>
+        <td class="px-3 py-2">
+          {% if lead.company %}
+            <span class="text-gray-900">{{ lead.company.company_name }}</span>
+            <span class="text-xs text-gray-400 block">{{ lead.company.domain }}</span>
+          {% endif %}
+        </td>
+        <td class="px-3 py-2 text-gray-700 font-mono text-xs">{{ lead.email or '—' }}</td>
+        <td class="px-3 py-2">
+          <form hx-patch="/admin/leads/{{ lead.id }}/rep" hx-swap="none" class="inline">
+            <select name="new_rep" onchange="this.form.requestSubmit()"
+                    class="text-xs border border-gray-300 rounded px-1 py-0.5">
+              <option value="">{{ lead.assigned_rep_email or '—' }}</option>
+              {% for r in reps %}
+                <option value="{{ r.email }}">{{ r.email }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td class="px-3 py-2">
+          <span class="text-xs px-2 py-0.5 rounded
+            {% if lead.delivery_status == 'delivered' %}bg-emerald-100 text-emerald-700
+            {% elif lead.delivery_status == 'pending' %}bg-blue-100 text-blue-700
+            {% else %}bg-gray-100 text-gray-600{% endif %}">
+            {{ lead.delivery_status }}
+          </span>
+        </td>
+        <td class="px-3 py-2">
+          <span class="text-xs px-2 py-0.5 rounded {{ 'bg-amber-100 text-amber-700' if lead.routing_status == 'fallback' else 'bg-gray-100 text-gray-600' }}">
+            {{ lead.routing_status or '—' }}
+          </span>
+        </td>
+        <td class="px-3 py-2 text-right space-x-2">
+          <button hx-post="/admin/leads/{{ lead.id }}/skip" hx-swap="none"
+                  class="text-xs text-gray-600 hover:text-gray-900">Skip</button>
+          <button hx-post="/admin/leads/{{ lead.id }}/suppress" hx-swap="none"
+                  hx-confirm="Add {{ lead.email or lead.full_name }} to DNC and skip this lead?"
+                  class="text-xs text-red-600 hover:text-red-700">Suppress</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="px-3 py-6 text-center text-gray-500">No leads match these filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if not fallback_view %}
+<div class="mt-4 flex items-center justify-between text-sm">
+  <p class="text-gray-500">Page {{ page }}</p>
+  <div class="space-x-2">
+    {% if page > 1 %}
+      <a href="?{{ {'rep': rep_filter, 'status': status_filter, 'routing_status': routing_status_filter, 'company': company_filter, 'search': search, 'page': page - 1} | urlencode }}"
+         class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50">← Prev</a>
+    {% endif %}
+    {% if has_more %}
+      <a href="?{{ {'rep': rep_filter, 'status': status_filter, 'routing_status': routing_status_filter, 'company': company_filter, 'search': search, 'page': page + 1} | urlencode }}"
+         class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50">Next →</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

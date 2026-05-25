@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Routing defaults · EON Lead Sniper{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold text-brand-ink page-heading">Routing defaults</h1>
+  <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
+          class="text-sm bg-brand-crimson text-white px-3 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add rule</button>
+</div>
+
+<div class="bg-brand-crimson-50 border border-brand-crimson text-brand-crimson text-sm rounded p-3 mb-4">
+  These rules fire only when a lead's company has no specific assignment.
+  Per-company overrides are managed on the <a href="/admin/companies" class="underline font-medium">Companies page</a>.
+</div>
+
+<p class="text-sm text-gray-500 mb-4">
+  Lower priority number = evaluated first. Drag rows to reorder; priorities save on drop.
+  Conditions are JSON: keys can be <code>company_industry</code>, <code>company_country</code>, <code>company_tier</code>, <code>company_domain</code>, each an array.
+</p>
+
+<div class="bg-white shadow rounded-lg overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="text-xs uppercase text-gray-500 bg-gray-50">
+      <tr>
+        <th class="text-left px-3 py-2"></th>
+        <th class="text-left px-3 py-2">Priority</th>
+        <th class="text-left px-3 py-2">Name</th>
+        <th class="text-left px-3 py-2">Conditions</th>
+        <th class="text-left px-3 py-2">Rep</th>
+        <th class="text-left px-3 py-2">Active</th>
+      </tr>
+    </thead>
+    <tbody id="rules-tbody">
+      {% for rule in rules %}
+      <tr class="border-t border-gray-100" draggable="true" data-rule-id="{{ rule.id }}">
+        <td class="px-3 py-2 text-gray-400 cursor-move">⋮⋮</td>
+        <td class="px-3 py-2">
+          <input value="{{ rule.priority }}" name="priority" type="number"
+                 hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
+                 class="w-16 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+        </td>
+        <td class="px-3 py-2">
+          <input value="{{ rule.name }}" name="name"
+                 hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
+                 class="w-64 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+        </td>
+        <td class="px-3 py-2">
+          <textarea name="conditions" rows="2"
+                    hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
+                    class="w-80 font-mono text-xs border border-gray-200 rounded px-1 py-0.5">{{ rule.conditions | tojson }}</textarea>
+        </td>
+        <td class="px-3 py-2">
+          <select name="assigned_rep_email"
+                  hx-patch="/admin/routing-rules/{{ rule.id }}" hx-trigger="change" hx-swap="none"
+                  class="text-xs border border-gray-200 rounded px-1 py-0.5">
+            <option value="{{ rule.assigned_rep_email }}" selected>{{ rule.assigned_rep_email }}</option>
+            {% for r in reps %}
+              {% if r.email != rule.assigned_rep_email %}
+                <option value="{{ r.email }}">{{ r.email }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </td>
+        <td class="px-3 py-2">
+          <form hx-patch="/admin/routing-rules/{{ rule.id }}" hx-swap="none">
+            <input type="hidden" name="is_active" value="{{ 'false' if rule.is_active else 'true' }}"/>
+            <button class="text-xs px-2 py-0.5 rounded {{ 'bg-emerald-100 text-emerald-700' if rule.is_active else 'bg-gray-100 text-gray-500' }}">
+              {{ 'active' if rule.is_active else 'inactive' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="px-3 py-6 text-center text-gray-500">No rules — leads fall back to <code>DEFAULT_REP_EMAIL</code>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+    <h2 class="text-lg font-semibold mb-4">Add routing rule</h2>
+    <form hx-post="/admin/routing-rules" class="space-y-3">
+      <input name="name" placeholder="Rule name" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <input name="priority" type="number" placeholder="Priority (e.g. 10)" required value="10" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <textarea name="conditions" rows="5"
+                placeholder='{"company_industry": ["oil and gas"], "company_country": ["United States"]}'
+                class="w-full font-mono text-xs border border-gray-300 rounded px-3 py-2"></textarea>
+      <select name="assigned_rep_email" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+        <option value="">Select rep…</option>
+        {% for r in reps %}
+          <option value="{{ r.email }}">{{ r.email }} — {{ r.name }}</option>
+        {% endfor %}
+      </select>
+      <input name="assigned_rep_name" placeholder="Rep display name (optional)" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <div class="flex justify-end space-x-2">
+        <button type="button" onclick="document.getElementById('add-modal').classList.add('hidden')"
+                class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
+        <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function() {
+  const tbody = document.getElementById('rules-tbody');
+  if (!tbody) return;
+  let dragged = null;
+  tbody.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('tr');
+    if (!row) return;
+    dragged = row;
+    row.style.opacity = '0.4';
+  });
+  tbody.addEventListener('dragend', () => {
+    if (dragged) dragged.style.opacity = '1';
+    dragged = null;
+    const order = [...tbody.querySelectorAll('tr[data-rule-id]')].map(r => r.dataset.ruleId);
+    fetch('/admin/routing-rules/reorder', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ order })
+    }).then(() => location.reload());
+  });
+  tbody.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const row = e.target.closest('tr');
+    if (!row || row === dragged) return;
+    const rect = row.getBoundingClientRect();
+    const after = (e.clientY - rect.top) > rect.height / 2;
+    row.parentNode.insertBefore(dragged, after ? row.nextSibling : row);
+  });
+})();
+</script>
+
+{% endblock %}

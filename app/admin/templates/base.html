@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}EON Lead Sniper{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'&gt;&lt;rect width='32' height='32' rx='4' fill='%231a1f4d'/&gt;&lt;text x='16' y='22' font-family='Inter,sans-serif' font-size='14' font-weight='700' fill='%238c1d3e' text-anchor='middle'&gt;LS&lt;/text&gt;&lt;/svg&gt;">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              navy:        '#1a1f4d',
+              'navy-700':  '#262d6b',
+              'navy-50':   '#eef0fa',
+              crimson:     '#8c1d3e',
+              'crimson-700': '#a52448',
+              'crimson-50':  '#fbeef2',
+              ink:         '#0f1331',
+              muted:       '#6b7280',
+              surface:     '#ffffff',
+              bg:          '#f5f7fb',
+              border:      '#e5e7eb',
+              success:     '#16a34a',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    .toast { transition: opacity 0.3s ease; }
+    .page-heading::after {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 3px;
+      background: #8c1d3e;
+      margin-top: 6px;
+      border-radius: 2px;
+    }
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #8c1d3e;
+    }
+    .brand-mark::after {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #fff;
+      border-radius: 50%;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(140, 29, 62, 0.35);
+      border-color: #8c1d3e;
+    }
+  </style>
+</head>
+<body class="bg-brand-bg text-brand-ink">
+  {% if current_user %}
+  <nav class="bg-brand-navy border-b border-brand-navy-700">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex h-14 items-center justify-between">
+        <div class="flex items-center space-x-6">
+          <a href="/admin/" class="flex items-center space-x-2 font-semibold text-white tracking-tight">
+            <span class="brand-mark"></span>
+            <span>EON Lead Sniper</span>
+          </a>
+          {% set active = (request.url.path or '/') %}
+          {% set links = [
+            ('/admin/', 'Dashboard'),
+            ('/admin/leads', 'Leads'),
+            ('/admin/leads/fallback', 'Fallback'),
+            ('/admin/companies', 'Companies'),
+            ('/admin/targeting-profiles', 'Profiles'),
+            ('/admin/reps', 'Reps'),
+            ('/admin/routing-rules', 'Routing defaults'),
+            ('/admin/do-not-contact', 'DNC'),
+            ('/admin/runs', 'Runs'),
+          ] %}
+          {% for href, label in links %}
+            {% set is_active = (active == href) or (href != '/admin/' and active.startswith(href)) %}
+            <a href="{{ href }}"
+               class="text-sm {% if is_active %}text-white border-b-2 border-brand-crimson pb-0.5{% else %}text-white/70 hover:text-white{% endif %}">
+              {{ label }}
+            </a>
+          {% endfor %}
+        </div>
+        <div class="flex items-center space-x-3">
+          <span class="text-sm text-white/60">{{ current_user }}</span>
+          <form action="/admin/logout" method="post">
+            <button class="text-sm text-white/70 hover:text-white">Sign out</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </nav>
+  {% endif %}
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+    {% block content %}{% endblock %}
+  </main>
+
+  {% if canonical_countries %}
+  <datalist id="canonical-countries">
+    {% for c in canonical_countries %}<option value="{{ c }}">{% endfor %}
+  </datalist>
+  {% endif %}
+
+  <script>
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+      const msg = evt.detail.xhr.getResponseHeader('X-Toast');
+      if (msg) {
+        const isError = !evt.detail.successful;
+        const t = document.createElement('div');
+        t.className = 'toast text-white px-4 py-2 rounded shadow-lg ' + (isError ? 'bg-brand-crimson' : 'bg-brand-navy');
+        t.textContent = msg;
+        document.getElementById('toast-container').appendChild(t);
+        setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+      }
+    });
+
+    // Soft-deactivation feedback for the reps page (and any future soft-delete flows).
+    document.body.addEventListener('rep-deactivated', function(evt) {
+      window.alert(evt.detail.message);
+      location.reload();
+    });
+  </script>
+</body>
+</html>

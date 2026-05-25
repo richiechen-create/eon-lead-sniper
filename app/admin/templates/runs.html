@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Run history · EON Lead Sniper{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold text-brand-ink page-heading">Run history</h1>
+</div>
+
+<div class="border-b border-brand-border mb-4">
+  <nav class="flex space-x-6">
+    <a href="?tab=enrichment" class="py-2 text-sm border-b-2 {{ 'border-brand-crimson text-brand-ink font-medium' if tab == 'enrichment' else 'border-transparent text-brand-muted hover:text-brand-ink' }}">
+      Enrichment runs
+    </a>
+    <a href="?tab=digest" class="py-2 text-sm border-b-2 {{ 'border-brand-crimson text-brand-ink font-medium' if tab == 'digest' else 'border-transparent text-brand-muted hover:text-brand-ink' }}">
+      Digest runs
+    </a>
+  </nav>
+</div>
+
+{% if tab == 'enrichment' %}
+<div class="bg-white shadow rounded-lg overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="text-xs uppercase text-gray-500 bg-gray-50">
+      <tr>
+        <th class="text-left px-3 py-2">Started</th>
+        <th class="text-left px-3 py-2">Completed</th>
+        <th class="text-right px-3 py-2">Companies</th>
+        <th class="text-right px-3 py-2">Candidates</th>
+        <th class="text-right px-3 py-2">New leads</th>
+        <th class="text-right px-3 py-2">Enriched</th>
+        <th class="text-right px-3 py-2">Credits</th>
+        <th class="text-right px-3 py-2">Errors</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in enrichment_runs %}
+      <tr class="border-t border-gray-100 align-top">
+        <td class="px-3 py-2 font-mono text-xs">{{ r.run_started_at.strftime('%Y-%m-%d %H:%M') if r.run_started_at else '—' }}</td>
+        <td class="px-3 py-2 font-mono text-xs">{{ r.run_completed_at.strftime('%Y-%m-%d %H:%M') if r.run_completed_at else '—' }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ r.companies_processed or 0 }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ r.candidates_found or 0 }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ r.new_leads_created or 0 }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ r.contacts_enriched or 0 }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ r.credits_consumed or 0 }}</td>
+        <td class="px-3 py-2 text-right">
+          {% if r.errors and r.errors | length > 0 %}
+            <details>
+              <summary class="cursor-pointer text-red-600 text-xs">{{ r.errors | length }} ▾</summary>
+              <pre class="text-left mt-2 text-xs text-gray-700 whitespace-pre-wrap">{{ r.errors | tojson(indent=2) }}</pre>
+            </details>
+          {% else %}<span class="text-gray-400">0</span>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="px-3 py-6 text-center text-gray-500">No enrichment runs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="bg-white shadow rounded-lg overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="text-xs uppercase text-gray-500 bg-gray-50">
+      <tr>
+        <th class="text-left px-3 py-2">Date</th>
+        <th class="text-left px-3 py-2">Created</th>
+        <th class="text-right px-3 py-2">Reps emailed</th>
+        <th class="text-right px-3 py-2">Leads delivered</th>
+        <th class="text-right px-3 py-2">Errors</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in digest_runs %}
+      <tr class="border-t border-gray-100 align-top">
+        <td class="px-3 py-2 font-mono text-xs">{{ r.run_date }}</td>
+        <td class="px-3 py-2 font-mono text-xs">{{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '—' }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ r.reps_emailed or 0 }}</td>
+        <td class="px-3 py-2 text-right font-mono">{{ r.total_leads_delivered or 0 }}</td>
+        <td class="px-3 py-2 text-right">
+          {% if r.errors and r.errors | length > 0 %}
+            <details>
+              <summary class="cursor-pointer text-red-600 text-xs">{{ r.errors | length }} ▾</summary>
+              <pre class="text-left mt-2 text-xs text-gray-700 whitespace-pre-wrap">{{ r.errors | tojson(indent=2) }}</pre>
+            </details>
+          {% else %}<span class="text-gray-400">0</span>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="px-3 py-6 text-center text-gray-500">No digest runs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

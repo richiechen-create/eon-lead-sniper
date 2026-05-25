@@ -1,0 +1,99 @@
+services:
+  - type: web
+    name: lead-engine-api
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -e .
+    startCommand: alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: APP_ENV
+        value: prod
+      - key: APOLLO_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: FROM_NAME
+        value: EON Lead Sniper
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: DEFAULT_REP_EMAIL
+        value: dan@eonreality.com
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: INTERNAL_API_KEY
+        generateValue: true
+      - key: CREDIT_BUDGET_MONTHLY
+        value: "9500"
+
+  - type: cron
+    name: lead-engine-enrichment
+    runtime: python
+    plan: starter
+    region: oregon
+    schedule: "0 4 * * *"
+    buildCommand: pip install -e .
+    startCommand: python -m scripts.run_enrichment
+    envVars:
+      - fromGroup: lead-engine-shared
+
+  - type: cron
+    name: lead-engine-digest
+    runtime: python
+    plan: starter
+    region: oregon
+    schedule: "0 * * * *"
+    buildCommand: pip install -e .
+    startCommand: |
+      if [ "$(date -u +%H)" = "23" ]; then
+        python -m scripts.run_digest --admin-summary
+      else
+        python -m scripts.run_digest
+      fi
+    envVars:
+      - fromGroup: lead-engine-shared
+
+  - type: cron
+    name: lead-engine-purge-api-log
+    runtime: python
+    plan: starter
+    region: oregon
+    schedule: "30 4 * * *"
+    buildCommand: pip install -e .
+    startCommand: python -m scripts.purge_api_log
+    envVars:
+      - fromGroup: lead-engine-shared
+
+envVarGroups:
+  - name: lead-engine-shared
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: APOLLO_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: FROM_NAME
+        value: EON Lead Sniper
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: DEFAULT_REP_EMAIL
+        value: dan@eonreality.com
+      - key: CREDIT_BUDGET_MONTHLY
+        value: "9500"

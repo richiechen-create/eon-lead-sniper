@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Reps · EON Lead Sniper{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold text-brand-ink page-heading">Reps</h1>
+  <button onclick="document.getElementById('add-modal').classList.remove('hidden')"
+          class="text-sm bg-brand-crimson text-white px-3 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add rep</button>
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="text-xs uppercase text-gray-500 bg-gray-50">
+      <tr>
+        <th class="text-left px-3 py-2">Email</th>
+        <th class="text-left px-3 py-2">Name</th>
+        <th class="text-left px-3 py-2">Team</th>
+        <th class="text-left px-3 py-2">Timezone</th>
+        <th class="text-left px-3 py-2">Daily cap</th>
+        <th class="text-left px-3 py-2">Pending</th>
+        <th class="text-left px-3 py-2">Active</th>
+        <th class="text-right px-3 py-2"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reps %}
+      <tr class="border-t border-gray-100">
+        <td class="px-3 py-2 font-mono text-xs">{{ r.email }}</td>
+        <td class="px-3 py-2">
+          <input value="{{ r.name }}" name="name"
+                 hx-patch="/admin/reps/{{ r.id }}" hx-trigger="change" hx-swap="none"
+                 class="w-40 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+        </td>
+        <td class="px-3 py-2">
+          <input value="{{ r.team or '' }}" name="team" placeholder="—"
+                 hx-patch="/admin/reps/{{ r.id }}" hx-trigger="change" hx-swap="none"
+                 class="w-24 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+        </td>
+        <td class="px-3 py-2">
+          <input value="{{ r.timezone }}" name="timezone"
+                 hx-patch="/admin/reps/{{ r.id }}" hx-trigger="change" hx-swap="none"
+                 class="w-40 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+        </td>
+        <td class="px-3 py-2">
+          <input value="{{ r.daily_lead_cap if r.daily_lead_cap is not none else '' }}" name="daily_lead_cap" placeholder="∞"
+                 hx-patch="/admin/reps/{{ r.id }}" hx-trigger="change" hx-swap="none"
+                 class="w-16 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+        </td>
+        <td class="px-3 py-2">
+          <a href="/admin/leads?rep={{ r.email }}&status=pending" class="text-blue-600 hover:underline">
+            {{ pending.get(r.email, 0) }}
+          </a>
+        </td>
+        <td class="px-3 py-2">
+          <form hx-patch="/admin/reps/{{ r.id }}" hx-swap="none">
+            <input type="hidden" name="is_active" value="{{ 'false' if r.is_active else 'true' }}"/>
+            <button class="text-xs px-2 py-0.5 rounded {{ 'bg-emerald-100 text-emerald-700' if r.is_active else 'bg-gray-100 text-gray-500' }}"
+                    title="Click to {{ 'deactivate' if r.is_active else 'reactivate' }}">
+              {{ 'active' if r.is_active else 'inactive' }}
+            </button>
+          </form>
+        </td>
+        <td class="px-3 py-2 text-right">
+          <button hx-delete="/admin/reps/{{ r.id }}"
+                  hx-confirm="Remove {{ r.email }}? If referenced by leads/assignments/rules it will be deactivated instead."
+                  hx-swap="none"
+                  class="text-xs text-brand-crimson hover:text-brand-crimson-700">Remove</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="px-3 py-6 text-center text-gray-500">No reps yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <h2 class="text-lg font-semibold mb-4">Add rep</h2>
+    <form hx-post="/admin/reps" class="space-y-3">
+      <input name="email" type="email" placeholder="rep@eonreality.com" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <input name="name" placeholder="Full name" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <div class="grid grid-cols-2 gap-3">
+        <input name="team" placeholder="sales / lead_gen" class="border border-gray-300 rounded px-3 py-2 text-sm"/>
+        <input name="timezone" placeholder="America/New_York" value="UTC" class="border border-gray-300 rounded px-3 py-2 text-sm"/>
+        <input name="daily_lead_cap" type="number" min="1" placeholder="daily cap (optional)" class="border border-gray-300 rounded px-3 py-2 text-sm col-span-2"/>
+      </div>
+      <div class="flex justify-end space-x-2">
+        <button type="button" onclick="document.getElementById('add-modal').classList.add('hidden')"
+                class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
+        <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

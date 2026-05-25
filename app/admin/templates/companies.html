@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% block title %}Companies · EON Lead Sniper{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold text-brand-ink page-heading">Companies</h1>
+  <div class="space-x-2">
+    <button onclick="openBulk()"
+            class="text-sm bg-white border border-brand-border text-brand-ink px-3 py-1.5 rounded hover:bg-brand-navy-50">Bulk import (CSV)</button>
+    <button onclick="openAdd('', false)"
+            class="text-sm bg-brand-crimson text-white px-3 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">+ Add new segment</button>
+  </div>
+</div>
+
+<div id="segments" class="space-y-4">
+  {% for seg in segments %}
+  <section class="bg-white shadow rounded-lg overflow-hidden" data-segment-key="{{ seg.key }}">
+    <header class="flex items-center justify-between px-4 py-3 border-b border-gray-200 cursor-pointer select-none segment-header">
+      <div class="flex items-center space-x-3">
+        <span class="text-gray-400 text-xs segment-chevron">▾</span>
+        <h2 class="text-lg font-semibold text-gray-900">{{ seg.label }}</h2>
+        {% if seg.team %}
+          <span class="text-xs px-2 py-0.5 rounded
+            {% if seg.team == 'sales' %}bg-brand-navy-50 text-brand-navy
+            {% elif seg.team == 'lead_gen' %}bg-emerald-50 text-emerald-700
+            {% elif seg.team == 'ops' %}bg-amber-50 text-amber-700
+            {% else %}bg-gray-100 text-brand-muted{% endif %}">
+            {{ seg.team }}
+          </span>
+        {% else %}
+          <span class="text-xs px-2 py-0.5 rounded bg-gray-100 text-brand-muted">Unassigned</span>
+        {% endif %}
+        <span class="text-xs text-brand-muted">{{ seg.active_count }} active</span>
+      </div>
+      <button type="button"
+              onclick="event.stopPropagation(); openAdd('{{ seg.label | replace("'", "\\'") }}', true)"
+              class="text-sm bg-brand-crimson text-white px-3 py-1 rounded hover:bg-brand-crimson-700 font-medium">
+        + Add company
+      </button>
+    </header>
+
+    <div class="segment-body overflow-x-auto">
+      {% if seg.rows %}
+      <table class="w-full text-sm">
+        <thead class="text-xs uppercase text-gray-500 bg-gray-50">
+          <tr>
+            <th class="text-left px-3 py-2">Company</th>
+            <th class="text-left px-3 py-2">Domain</th>
+            <th class="text-left px-3 py-2">Country</th>
+            <th class="text-left px-3 py-2">Tier</th>
+            <th class="text-left px-3 py-2">Max/run</th>
+            <th class="text-left px-3 py-2">Profiles</th>
+            <th class="text-left px-3 py-2">Reps</th>
+            <th class="text-left px-3 py-2">Segment</th>
+            <th class="text-left px-3 py-2">Active</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in seg.rows %}
+          {% set c = row.company %}
+          <tr class="border-t border-gray-100">
+            <td class="px-3 py-2">
+              <input value="{{ c.company_name }}" name="company_name"
+                     hx-patch="/admin/companies/{{ c.id }}" hx-trigger="change" hx-swap="none"
+                     class="w-48 border border-gray-200 rounded px-1 py-0.5 text-sm font-medium"/>
+            </td>
+            <td class="px-3 py-2 text-gray-600 font-mono text-xs">{{ c.domain }}</td>
+            <td class="px-3 py-2">
+              <input value="{{ c.country or '' }}" name="country" placeholder="—"
+                     list="canonical-countries"
+                     hx-patch="/admin/companies/{{ c.id }}" hx-trigger="change" hx-swap="none"
+                     class="w-32 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+            </td>
+            <td class="px-3 py-2">
+              <input value="{{ c.tier or '' }}" placeholder="—"
+                     hx-patch="/admin/companies/{{ c.id }}" hx-trigger="change" hx-swap="none"
+                     name="tier" class="w-20 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+            </td>
+            <td class="px-3 py-2">
+              <input type="number" min="1" value="{{ c.max_contacts_per_run }}"
+                     hx-patch="/admin/companies/{{ c.id }}" hx-trigger="change" hx-swap="none"
+                     name="max_contacts_per_run" class="w-16 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+            </td>
+            <td class="px-3 py-2 text-xs profiles-cell relative"
+                onclick="
+                  if (event.target.closest('button')) return;
+                  const pop = this.querySelector('.profile-popover');
+                  document.querySelectorAll('.profile-popover').forEach(p => { if (p !== pop) p.classList.add('hidden'); });
+                  pop.classList.toggle('hidden');
+                  event.stopPropagation();
+                ">
+              {% with company=row.company, linked_profiles=row.linked_profiles %}
+                {% include '_profiles_pills.html' %}
+              {% endwith %}
+              <div class="profile-popover hidden absolute z-30 mt-1 left-0 w-64 bg-white border border-brand-border rounded shadow-lg p-3"
+                   onclick="event.stopPropagation()"
+                   onkeydown="if (event.key === 'Escape') this.classList.add('hidden')">
+                <p class="text-xs font-medium text-brand-ink mb-2">
+                  Targeting profiles for <span class="font-semibold">{{ row.company.company_name }}</span>
+                </p>
+                {% if profiles %}
+                  <div class="max-h-64 overflow-y-auto space-y-1 mb-2">
+                    {% for p in profiles %}
+                      <label class="flex items-center space-x-2 text-xs cursor-pointer hover:bg-brand-navy-50 px-1 py-0.5 rounded">
+                        <input type="checkbox"
+                               name="profile_id"
+                               value="{{ p.id }}"
+                               {% if p.id in row.linked_profile_ids %}checked{% endif %}
+                               hx-post="/admin/companies/{{ row.company.id }}/profiles/toggle"
+                               hx-target="#profile-pills-{{ row.company.id }}"
+                               hx-swap="outerHTML"
+                               hx-vals='{"profile_id": "{{ p.id }}"}'/>
+                        <span>{{ p.name }}</span>
+                      </label>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="text-xs text-brand-muted mb-2">
+                    No targeting profiles yet —
+                    <a href="/admin/targeting-profiles" target="_blank" class="text-brand-crimson hover:underline">create one</a>.
+                  </p>
+                {% endif %}
+                <div class="flex items-center justify-between border-t border-brand-border pt-2 text-xs">
+                  <a href="/admin/targeting-profiles" target="_blank" class="text-brand-crimson hover:underline">Manage targeting profiles</a>
+                  <button type="button"
+                          onclick="this.closest('.profile-popover').classList.add('hidden')"
+                          class="px-2 py-0.5 bg-brand-navy text-white rounded hover:bg-brand-navy-700">Done</button>
+                </div>
+              </div>
+            </td>
+            <td class="px-3 py-2 text-xs cursor-pointer hover:bg-brand-navy-50 reps-cell"
+                data-company-id="{{ c.id }}">
+              {% if row.assignments | length == 0 %}
+                <span class="text-brand-muted">— (uses segment rules)</span>
+              {% elif row.assignments | length == 1 %}
+                {% set country, email = row.assignments[0] %}
+                <span class="inline-block bg-brand-navy-50 text-brand-navy px-1.5 py-0.5 rounded">
+                  {{ country if country != '*' else 'any' }}&rarr;{{ email.split('@')[0] }}
+                </span>
+              {% else %}
+                <span class="inline-block bg-brand-navy-50 text-brand-navy px-1.5 py-0.5 rounded"
+                      title="{% for country, email in row.assignments[:3] %}{{ country if country != '*' else 'any' }}&rarr;{{ email.split('@')[0] }}{{ ' · ' if not loop.last }}{% endfor %}{% if row.assignments | length > 3 %} · …{% endif %}">
+                  {{ row.assignments | length }} reps assigned &#9662;
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-3 py-2">
+              <input list="industries-list" value="{{ c.industry or '' }}" name="industry"
+                     hx-patch="/admin/companies/{{ c.id }}" hx-trigger="change" hx-swap="none"
+                     class="w-36 border border-gray-200 rounded px-1 py-0.5 text-xs"/>
+            </td>
+            <td class="px-3 py-2">
+              <form hx-patch="/admin/companies/{{ c.id }}" hx-swap="none">
+                <input type="hidden" name="is_active" value="{{ 'false' if c.is_active else 'true' }}"/>
+                <button class="text-xs px-2 py-0.5 rounded {{ 'bg-emerald-100 text-emerald-700' if c.is_active else 'bg-gray-100 text-gray-500' }}">
+                  {{ 'active' if c.is_active else 'inactive' }}
+                </button>
+              </form>
+            </td>
+          </tr>
+          <tr id="assignments-row-{{ c.id }}" class="assignments-row hidden">
+            <td colspan="9" class="p-0">
+              <div class="assignment-editor-container"></div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="px-4 py-6 text-sm text-gray-500">No companies in this segment yet.</p>
+      {% endif %}
+    </div>
+  </section>
+  {% else %}
+  <p class="text-sm text-gray-500 bg-white shadow rounded-lg p-6 text-center">
+    No companies yet — add one or bulk import to get started.
+  </p>
+  {% endfor %}
+</div>
+
+<datalist id="industries-list">
+  {% for ind in distinct_industries %}<option value="{{ ind }}">{% endfor %}
+</datalist>
+
+<!-- Add company / segment modal -->
+<div id="add-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+    <h2 id="add-modal-title" class="text-lg font-semibold mb-4">Add company</h2>
+    <form hx-post="/admin/companies" class="space-y-3">
+      <input name="company_name" placeholder="Company name" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <input name="domain" placeholder="domain.com" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="col-span-2">
+          <label class="block text-xs font-medium text-gray-600 mb-1">Segment / industry</label>
+          <input name="industry" id="add-industry-input" list="industries-list"
+                 placeholder="e.g. manufacturing"
+                 class="w-full border border-gray-300 rounded px-3 py-2 text-sm"/>
+        </div>
+        <input name="country" placeholder="Country" list="canonical-countries"
+               class="border border-gray-300 rounded px-3 py-2 text-sm"/>
+        <input name="tier" placeholder="Tier (optional)" class="border border-gray-300 rounded px-3 py-2 text-sm"/>
+        <input name="max_contacts_per_run" type="number" min="1" value="10" class="border border-gray-300 rounded px-3 py-2 text-sm col-span-2"/>
+      </div>
+      <label class="block text-xs font-medium text-gray-600">Targeting profiles</label>
+      <select name="targeting_profiles" multiple
+              class="w-full border border-gray-300 rounded px-3 py-2 text-sm h-32">
+        {% for p in profiles %}
+          <option value="{{ p.name }}">{{ p.name }}</option>
+        {% endfor %}
+      </select>
+      <p class="text-xs text-gray-500">Cmd/Ctrl-click to select multiple profiles.</p>
+      <div class="flex justify-end space-x-2">
+        <button type="button" onclick="closeAdd()" class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
+        <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bulk import modal -->
+<div id="bulk-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
+    <h2 class="text-lg font-semibold mb-2">Bulk import via CSV</h2>
+    <p class="text-xs text-gray-500 mb-4">
+      Paste a header row + rows. Columns: <code>company_name, domain, industry, country, tier, max_contacts_per_run, targeting_profiles</code>. Use <code>;</code> to separate multiple profile names. Rows are auto-assigned to panels by their <code>industry</code> value.
+    </p>
+    <form hx-post="/admin/companies/bulk-import">
+      <textarea name="csv_text" rows="10" required
+                class="w-full font-mono text-xs border border-gray-300 rounded px-3 py-2"
+                placeholder="company_name,domain,industry,country,tier,max_contacts_per_run,targeting_profiles
+Acme,acme.com,manufacturing,United States,tier1,10,ld_leadership;ehs_leadership"></textarea>
+      <div class="flex justify-end space-x-2 mt-3">
+        <button type="button" onclick="closeBulk()" class="px-3 py-1.5 text-sm border border-gray-300 rounded">Cancel</button>
+        <button class="bg-gray-900 text-white text-sm px-4 py-1.5 rounded hover:bg-gray-800">Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const LS_KEY = 'lead_engine_segment_collapsed_v1';
+const collapsed = new Set(JSON.parse(localStorage.getItem(LS_KEY) || '[]'));
+
+function applyCollapsedState() {
+  document.querySelectorAll('section[data-segment-key]').forEach(section => {
+    const key = section.dataset.segmentKey;
+    const activeCount = parseInt(section.querySelector('.text-xs.text-gray-500')?.textContent || '0', 10);
+    let isCollapsed = collapsed.has(key);
+    if (!collapsed.has(key) && activeCount === 0 && !localStorage.getItem(LS_KEY + '_seen_' + key)) {
+      isCollapsed = true;
+    }
+    setCollapsed(section, isCollapsed);
+  });
+}
+function setCollapsed(section, isCollapsed) {
+  const body = section.querySelector('.segment-body');
+  const chevron = section.querySelector('.segment-chevron');
+  if (isCollapsed) {
+    body.style.display = 'none';
+    chevron.textContent = '▸';
+  } else {
+    body.style.display = '';
+    chevron.textContent = '▾';
+  }
+}
+document.querySelectorAll('.segment-header').forEach(h => {
+  h.addEventListener('click', (e) => {
+    if (e.target.tagName === 'BUTTON') return;
+    const section = h.closest('section');
+    const key = section.dataset.segmentKey;
+    const isCollapsed = section.querySelector('.segment-body').style.display === 'none';
+    setCollapsed(section, !isCollapsed);
+    if (!isCollapsed) collapsed.add(key);
+    else collapsed.delete(key);
+    localStorage.setItem(LS_KEY, JSON.stringify([...collapsed]));
+    localStorage.setItem(LS_KEY + '_seen_' + key, '1');
+  });
+});
+applyCollapsedState();
+
+function openAdd(industry, locked) {
+  const modal = document.getElementById('add-modal');
+  const input = document.getElementById('add-industry-input');
+  const title = document.getElementById('add-modal-title');
+  input.value = industry || '';
+  if (locked) {
+    input.readOnly = true;
+    input.classList.add('bg-gray-100', 'text-gray-600');
+    title.textContent = 'Add company to ' + industry;
+  } else {
+    input.readOnly = false;
+    input.classList.remove('bg-gray-100', 'text-gray-600');
+    title.textContent = 'Add new segment';
+  }
+  modal.classList.remove('hidden');
+  // Defer focus so Tailwind/HTMX have settled.
+  setTimeout(() => input.focus(), 0);
+}
+function closeAdd() { document.getElementById('add-modal').classList.add('hidden'); }
+function openBulk() { document.getElementById('bulk-modal').classList.remove('hidden'); }
+function closeBulk() { document.getElementById('bulk-modal').classList.add('hidden'); }
+
+// Close modals on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeAdd();
+    closeBulk();
+    document.querySelectorAll('.profile-popover').forEach(p => p.classList.add('hidden'));
+  }
+});
+
+// Click anywhere outside a profile popover closes all of them.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.profiles-cell')) {
+    document.querySelectorAll('.profile-popover').forEach(p => p.classList.add('hidden'));
+  }
+});
+
+// Reps cell click -> toggle the assignments editor sub-row.
+document.querySelectorAll('.reps-cell').forEach(cell => {
+  cell.addEventListener('click', async (e) => {
+    const companyId = cell.dataset.companyId;
+    const subRow = document.getElementById('assignments-row-' + companyId);
+    if (!subRow) return;
+    const container = subRow.querySelector('.assignment-editor-container');
+    const isHidden = subRow.classList.contains('hidden');
+    if (isHidden) {
+      const resp = await fetch('/admin/companies/' + companyId + '/assignments', {
+        headers: { 'Accept': 'text/html' }
+      });
+      container.innerHTML = await resp.text();
+      htmx.process(container);
+      subRow.classList.remove('hidden');
+    } else {
+      subRow.classList.add('hidden');
+      container.innerHTML = '';
+    }
+  });
+});
+</script>
+
+{% endblock %}

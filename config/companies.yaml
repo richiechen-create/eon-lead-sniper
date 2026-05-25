@@ -1,0 +1,15 @@
+- company_name: ExxonMobil
+  domain: exxonmobil.com
+  industry: oil and gas
+  country: United States
+  tier: strategic
+  max_contacts_per_run: 15
+  targeting_profiles: [ld_leadership, ehs_leadership]
+
+- company_name: Shell
+  domain: shell.com
+  industry: oil and gas
+  country: United Kingdom
+  tier: strategic
+  max_contacts_per_run: 15
+  targeting_profiles: [ld_leadership, ehs_leadership]
