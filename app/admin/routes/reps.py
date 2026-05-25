@@ -8,6 +8,7 @@ from app.admin.auth import require_admin
 from app.admin.templating import render
 from app.db import session_scope
 from app.models import Company, CompanyRepAssignment, Lead, Rep, RoutingRule
+from app.timezones import is_valid_timezone
 
 router = APIRouter(prefix="/reps")
 
@@ -36,6 +37,11 @@ def reps_create(
     daily_lead_cap: Optional[int] = Form(None),
     _user: str = Depends(require_admin),
 ):
+    tz = (timezone or "UTC").strip() or "UTC"
+    if not is_valid_timezone(tz):
+        msg = f"'{tz}' is not a recognized IANA timezone. Pick one from the dropdown."
+        raise HTTPException(status_code=400, detail=msg, headers={"X-Toast": msg})
+
     with session_scope() as session:
         existing = session.execute(select(Rep).where(Rep.email == email)).scalar_one_or_none()
         if existing is not None:
@@ -44,7 +50,7 @@ def reps_create(
             Rep(
                 email=email.strip().lower(),
                 name=name,
-                timezone=timezone,
+                timezone=tz,
                 team=team or None,
                 daily_lead_cap=daily_lead_cap,
                 is_active=True,
@@ -73,7 +79,13 @@ def reps_update(
         if name is not None:
             rep.name = name
         if timezone is not None:
-            rep.timezone = timezone or "UTC"
+            tz = (timezone or "UTC").strip() or "UTC"
+            if not is_valid_timezone(tz):
+                msg = f"'{tz}' is not a recognized IANA timezone."
+                raise HTTPException(
+                    status_code=400, detail=msg, headers={"X-Toast": msg}
+                )
+            rep.timezone = tz
         if team is not None:
             rep.team = team or None
         if daily_lead_cap is not None:

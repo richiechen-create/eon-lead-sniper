@@ -124,6 +124,12 @@
   </datalist>
   {% endif %}
 
+  {% if canonical_timezones %}
+  <datalist id="canonical-timezones">
+    {% for tz in canonical_timezones %}<option value="{{ tz }}">{% endfor %}
+  </datalist>
+  {% endif %}
+
   <script>
     document.body.addEventListener('htmx:afterRequest', function(evt) {
       const msg = evt.detail.xhr.getResponseHeader('X-Toast');

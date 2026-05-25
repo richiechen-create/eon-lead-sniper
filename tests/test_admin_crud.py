@@ -216,6 +216,51 @@ def test_dashboard_renders_with_data(env):
     assert "Manual triggers" in resp.text
 
 
+def test_rep_create_rejects_bad_timezone(env):
+    client, _ = env
+    resp = client.post(
+        "/admin/reps",
+        data={
+            "email": "tzbad@x.com",
+            "name": "Bad TZ",
+            "timezone": "Eastern Time",  # not IANA
+            "team": "sales",
+        },
+    )
+    assert resp.status_code == 400
+    assert "not a recognized IANA timezone" in resp.json()["detail"]
+
+
+def test_rep_create_accepts_valid_timezone(env):
+    client, SessionLocal = env
+    resp = client.post(
+        "/admin/reps",
+        data={
+            "email": "tzgood@x.com",
+            "name": "Good TZ",
+            "timezone": "America/New_York",
+            "team": "sales",
+        },
+    )
+    assert resp.status_code == 200
+    with SessionLocal() as s:
+        rep = s.query(Rep).filter_by(email="tzgood@x.com").one()
+        assert rep.timezone == "America/New_York"
+
+
+def test_rep_patch_rejects_bad_timezone(env):
+    client, SessionLocal = env
+    with SessionLocal() as s:
+        rep = Rep(email="tzpatch@x.com", name="X", timezone="UTC", is_active=True)
+        s.add(rep)
+        s.commit()
+        rep_id = rep.id
+
+    resp = client.patch(f"/admin/reps/{rep_id}", data={"timezone": "PST"})
+    assert resp.status_code == 400
+    assert "PST" in resp.json()["detail"]
+
+
 def test_runs_page_tabs(env):
     client, _ = env
     resp = client.get("/admin/runs?tab=enrichment", headers={"Accept": "text/html"})
