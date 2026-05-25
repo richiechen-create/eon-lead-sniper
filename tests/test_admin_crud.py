@@ -216,6 +216,42 @@ def test_dashboard_renders_with_data(env):
     assert "Manual triggers" in resp.text
 
 
+def test_bulk_import_accepts_messy_real_world_headers(env):
+    """Headers like 'Company_Name', 'Domain', 'Segment/Industry', 'Country' should work."""
+    client, SessionLocal = env
+    csv_text = (
+        "Rank,Company_Name,Ticker,Domain,Segment/Industry,Country,Rx Revenue (USD B)\n"
+        "1,Eli Lilly,LLY,lilly.com,Healthcare,United States,65.2\n"
+        "2,Pfizer,PFE,pfizer.com,Healthcare,United States,62.6\n"
+        "3,AstraZeneca,AZN,https://www.astrazeneca.com/,Healthcare,United Kingdom,58.7\n"
+    )
+    resp = client.post("/admin/companies/bulk-import", data={"csv_text": csv_text})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["upserted"] == 3
+    assert data["skipped"] == 0
+    assert data["errors"] == []
+
+    with SessionLocal() as s:
+        lilly = s.query(Company).filter_by(domain="lilly.com").one()
+        assert lilly.company_name == "Eli Lilly"
+        assert lilly.industry == "Healthcare"
+        assert lilly.country == "United States"
+
+        # URL pasted as domain should normalize to bare apex
+        az = s.query(Company).filter_by(domain="astrazeneca.com").one()
+        assert az.country == "United Kingdom"
+
+
+def test_bulk_import_rejects_csv_without_required_columns(env):
+    client, _ = env
+    csv_text = "Rank,Ticker\n1,LLY\n"
+    resp = client.post("/admin/companies/bulk-import", data={"csv_text": csv_text})
+    assert resp.status_code == 400
+    assert "company_name" in resp.json()["detail"]
+    assert "domain" in resp.json()["detail"]
+
+
 def test_rep_create_rejects_bad_timezone(env):
     client, _ = env
     resp = client.post(

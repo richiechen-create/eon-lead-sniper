@@ -253,6 +253,56 @@ def companies_update(
     return {"ok": True}
 
 
+# Map common real-world CSV header variants → our canonical column keys.
+# Lookup is done after lowercasing + stripping the incoming header.
+_HEADER_ALIASES: dict[str, str] = {
+    "company": "company_name",
+    "company name": "company_name",
+    "company_name": "company_name",
+    "name": "company_name",
+    "domain": "domain",
+    "website": "domain",
+    "url": "domain",
+    "industry": "industry",
+    "segment": "industry",
+    "segment/industry": "industry",
+    "industry/segment": "industry",
+    "sector": "industry",
+    "country": "country",
+    "hq country": "country",
+    "headquarters": "country",
+    "tier": "tier",
+    "max_contacts_per_run": "max_contacts_per_run",
+    "max contacts": "max_contacts_per_run",
+    "max contacts per run": "max_contacts_per_run",
+    "targeting_profiles": "targeting_profiles",
+    "targeting profiles": "targeting_profiles",
+    "profiles": "targeting_profiles",
+    "notes": "notes",
+}
+
+
+def _normalize_header(h: str | None) -> str | None:
+    """Lowercase + strip a header, then map to a canonical key if aliased."""
+    if not h:
+        return None
+    key = h.strip().lower()
+    return _HEADER_ALIASES.get(key, key)
+
+
+def _normalize_row(row: dict) -> dict:
+    """Return a new dict keyed by canonical column names. Unknown columns dropped."""
+    out: dict[str, str] = {}
+    for orig_key, val in row.items():
+        key = _normalize_header(orig_key)
+        if key is None:
+            continue
+        # Don't overwrite a value already set from an earlier alias on the same row.
+        if key in _HEADER_ALIASES.values() and key not in out:
+            out[key] = val
+    return out
+
+
 @router.post("/bulk-import")
 def companies_bulk_import(
     response: Response,
@@ -260,9 +310,16 @@ def companies_bulk_import(
     _user: str = Depends(require_admin),
 ):
     reader = csv.DictReader(io.StringIO(csv_text))
+    if reader.fieldnames is None:
+        raise HTTPException(400, "CSV is empty or missing a header row")
+    normalized_headers = {_normalize_header(h) for h in reader.fieldnames}
     required = {"company_name", "domain"}
-    if reader.fieldnames is None or not required.issubset(set(reader.fieldnames)):
-        raise HTTPException(400, "CSV must include company_name and domain columns")
+    if not required.issubset(normalized_headers):
+        raise HTTPException(
+            400,
+            "CSV must include at least 'company_name' and 'domain' columns "
+            "(case-insensitive; aliases like 'Company Name', 'Website' also work)",
+        )
 
     upserted = 0
     skipped = 0
@@ -273,8 +330,20 @@ def companies_bulk_import(
         }
         existing = {c.domain: c for c in session.execute(select(Company)).scalars()}
         # rowno starts at 2 because row 1 is the CSV header.
-        for rowno, row in enumerate(reader, start=2):
-            domain = (row.get("domain") or "").strip().lower()
+        for rowno, raw_row in enumerate(reader, start=2):
+            row = _normalize_row(raw_row)
+
+            # Normalize domain like the single-add endpoint: strip protocol,
+            # leading www., trailing path/slash.
+            raw_domain = (row.get("domain") or "").strip().lower()
+            for prefix in ("https://", "http://"):
+                if raw_domain.startswith(prefix):
+                    raw_domain = raw_domain[len(prefix):]
+            raw_domain = raw_domain.rstrip("/").split("/")[0]
+            if raw_domain.startswith("www."):
+                raw_domain = raw_domain[4:]
+            domain = raw_domain
+
             if not domain:
                 skipped += 1
                 errors.append(f"row {rowno}: missing domain")
