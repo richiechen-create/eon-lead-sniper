@@ -1,9 +1,9 @@
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import Optional
+from typing import Iterable, Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.apollo import ApolloClient, ApolloError
@@ -81,7 +81,18 @@ def _candidate_from_apollo(person: dict, company: Company) -> LeadCandidate:
     )
 
 
-def run_enrichment(session: Session, *, apollo_client: Optional[ApolloClient] = None) -> EnrichmentSummary:
+def run_enrichment(
+    session: Session,
+    *,
+    apollo_client: Optional[ApolloClient] = None,
+    industries: Optional[Iterable[str]] = None,
+) -> EnrichmentSummary:
+    """Run enrichment across active companies.
+
+    `industries` (optional): if provided, restrict to companies whose
+    `industry` matches one of the given values (case-insensitive, trimmed).
+    Useful for scoping a manual run to a single segment.
+    """
     settings = get_settings()
     run = EnrichmentRun(run_started_at=utcnow(), errors=[])
     session.add(run)
@@ -97,9 +108,16 @@ def run_enrichment(session: Session, *, apollo_client: Optional[ApolloClient] = 
     halted_by_budget = False
 
     try:
-        companies = session.execute(
-            select(Company).where(Company.is_active == True).order_by(Company.company_name)  # noqa: E712
-        ).scalars().all()
+        stmt = (
+            select(Company)
+            .where(Company.is_active == True)  # noqa: E712
+            .order_by(Company.company_name)
+        )
+        if industries:
+            keys = {(i or "").strip().lower() for i in industries if i}
+            if keys:
+                stmt = stmt.where(func.lower(func.trim(Company.industry)).in_(keys))
+        companies = session.execute(stmt).scalars().all()
 
         for company in companies:
             # Budget guard — checked before every company AND before every match call.

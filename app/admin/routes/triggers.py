@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -19,11 +20,23 @@ router = APIRouter(prefix="/triggers")
 
 
 @router.post("/enrichment")
-def trigger_enrichment(_user: str = Depends(require_admin)) -> dict:
+def trigger_enrichment(
+    industry: Optional[str] = None,
+    _user: str = Depends(require_admin),
+) -> dict:
+    """Manually trigger an enrichment run.
+
+    Pass ?industry=oil%20and%20gas (or a comma-separated list) to restrict to
+    one or more segments. Without the param, runs across all active companies.
+    """
+    industries: Optional[list[str]] = None
+    if industry:
+        industries = [i.strip() for i in industry.split(",") if i.strip()]
     with session_scope() as session:
-        summary = run_enrichment(session)
+        summary = run_enrichment(session, industries=industries)
     return {
         "run_id": summary.run_id,
+        "scope": industries or "all",
         "companies_processed": summary.companies_processed,
         "new_leads_created": summary.new_leads_created,
         "contacts_enriched": summary.contacts_enriched,
