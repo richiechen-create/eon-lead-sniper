@@ -1,15 +1,12 @@
-import base64
 import logging
+import smtplib
 from dataclasses import dataclass
+from email.message import EmailMessage
 from typing import Optional
-
-import httpx
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
-
-RESEND_API = "https://api.resend.com/emails"
 
 
 @dataclass
@@ -19,7 +16,7 @@ class Attachment:
     content_type: str = "text/csv"
 
 
-def _resend_payload(
+def _build_message(
     *,
     to: list[str],
     subject: str,
@@ -27,24 +24,27 @@ def _resend_payload(
     text: Optional[str],
     attachments: Optional[list[Attachment]],
     from_email: str,
-    from_name: Optional[str] = None,
-) -> dict:
-    sender = f"{from_name} <{from_email}>" if from_name else from_email
-    payload: dict = {"from": sender, "to": to, "subject": subject}
+    from_name: Optional[str],
+) -> EmailMessage:
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
+    msg["To"] = ", ".join(to)
+
+    # Plain-text body is required; HTML attaches as alternative.
+    msg.set_content(text or "(no plain-text body)")
     if html:
-        payload["html"] = html
-    if text:
-        payload["text"] = text
-    if attachments:
-        payload["attachments"] = [
-            {
-                "filename": a.filename,
-                "content": base64.b64encode(a.content_bytes).decode("ascii"),
-                "content_type": a.content_type,
-            }
-            for a in attachments
-        ]
-    return payload
+        msg.add_alternative(html, subtype="html")
+
+    for a in attachments or []:
+        maintype, _, subtype = (a.content_type or "application/octet-stream").partition("/")
+        msg.add_attachment(
+            a.content_bytes,
+            maintype=maintype or "application",
+            subtype=subtype or "octet-stream",
+            filename=a.filename,
+        )
+    return msg
 
 
 def send_email(
@@ -55,14 +55,15 @@ def send_email(
     text: Optional[str] = None,
     attachments: Optional[list[Attachment]] = None,
     retries: int = 1,
-    http_client: Optional[httpx.Client] = None,
 ) -> dict:
-    """Send via Resend. Retries once on failure. Raises on final failure."""
+    """Send via SMTP (Gmail with App Password). Retries once on failure."""
     settings = get_settings()
-    if not settings.RESEND_API_KEY:
-        raise RuntimeError("RESEND_API_KEY not configured")
+    if not (settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD):
+        raise RuntimeError(
+            "SMTP not configured: set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD"
+        )
 
-    payload = _resend_payload(
+    msg = _build_message(
         to=to,
         subject=subject,
         html=html,
@@ -71,34 +72,28 @@ def send_email(
         from_email=settings.FROM_EMAIL,
         from_name=settings.FROM_NAME,
     )
-    headers = {
-        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
-        "Content-Type": "application/json",
-    }
 
-    client = http_client or httpx.Client(timeout=30.0)
     last_error: Optional[Exception] = None
-    try:
-        for attempt in range(retries + 1):
-            try:
-                resp = client.post(RESEND_API, json=payload, headers=headers)
-                if resp.status_code >= 400:
-                    raise RuntimeError(f"Resend {resp.status_code}: {resp.text}")
-                return resp.json()
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                logger.warning("Resend send failed (attempt %d): %s", attempt + 1, exc)
-        assert last_error is not None
-        raise last_error
-    finally:
-        if http_client is None:
-            client.close()
+    for attempt in range(retries + 1):
+        try:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                server.send_message(msg)
+            return {"ok": True, "to": to}
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            logger.warning("SMTP send failed (attempt %d): %s", attempt + 1, exc)
+    assert last_error is not None
+    raise last_error
 
 
 def send_admin_alert(*, subject: str, text: str) -> None:
     """Best-effort alert to ADMIN_EMAIL. Never raises (caller usually doesn't want a cascade)."""
     settings = get_settings()
-    if not settings.ADMIN_EMAIL or not settings.RESEND_API_KEY:
+    if not settings.ADMIN_EMAIL or not settings.SMTP_USERNAME:
         logger.warning("admin alert suppressed (missing config): %s", subject)
         return
     try:

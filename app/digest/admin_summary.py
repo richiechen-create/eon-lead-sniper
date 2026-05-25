@@ -186,7 +186,7 @@ def collect(session: Session, today: Optional[date] = None) -> AdminSummary:
 def send_admin_summary(session: Session, today: Optional[date] = None) -> AdminSummary:
     settings = get_settings()
     summary = collect(session, today=today)
-    if settings.ADMIN_EMAIL and settings.RESEND_API_KEY:
+    if settings.ADMIN_EMAIL and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
         send_email(
             to=[settings.ADMIN_EMAIL],
             subject=f"EON Lead Sniper Daily Summary - {summary.run_date.isoformat()}",

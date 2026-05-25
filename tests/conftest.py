@@ -3,7 +3,8 @@ import os
 # Force SQLite + fixed env BEFORE app modules import their cached settings.
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("APOLLO_API_KEY", "test-key")
-os.environ.setdefault("RESEND_API_KEY", "")  # disable real sends
+os.environ.setdefault("SMTP_USERNAME", "")  # disable real sends
+os.environ.setdefault("SMTP_PASSWORD", "")
 os.environ.setdefault("ADMIN_EMAIL", "admin@example.com")
 os.environ.setdefault("DEFAULT_REP_EMAIL", "dan@example.com")
 os.environ.setdefault("APP_ENV", "dev")

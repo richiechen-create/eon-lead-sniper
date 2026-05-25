@@ -9,9 +9,14 @@ class Settings(BaseSettings):
 
     APOLLO_API_KEY: str = ""
     DATABASE_URL: str = "sqlite:///./lead_engine.sqlite"
-    RESEND_API_KEY: str = ""
     FROM_EMAIL: str = "leadengine@leadengine.eonreality.com"
     FROM_NAME: str = "EON Lead Sniper"
+
+    # SMTP (Gmail via App Password). FROM_EMAIL should match SMTP_USERNAME.
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
     ADMIN_EMAIL: str = "admin@eonreality.com"
     DEFAULT_REP_EMAIL: str = "dan@eonreality.com"
     DEFAULT_REP_NAME: str = "Dan (Fallback)"
