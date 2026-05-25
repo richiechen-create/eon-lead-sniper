@@ -191,14 +191,24 @@ def test_create_rule_backward_compat_with_json(env):
 
 # ----- PATCH with structured field replaces conditions correctly ------------
 
-def test_patch_rule_with_structured_field_replaces_conditions(env):
+def test_patch_rule_with_single_field_merges_into_existing(env):
+    """Regression: PATCHing only `country` must NOT wipe industry/tier/domain.
+
+    Previously the endpoint rebuilt the whole conditions dict from the four
+    structured fields, treating "not sent" as "clear it" — so the country
+    chip widget would blank everything else on every chip add.
+    """
     client, SessionLocal = env
     with SessionLocal() as s:
         s.add(Rep(email="rep@x.com", name="R", timezone="UTC", is_active=True))
         rule = RoutingRule(
             name="initial",
             priority=10,
-            conditions={"company_industry": ["oil and gas"]},
+            conditions={
+                "company_industry": ["oil and gas"],
+                "company_tier": ["strategic"],
+                "company_domain": ["exxonmobil.com"],
+            },
             assigned_rep_email="rep@x.com",
             assigned_rep_name="R",
             is_active=True,
@@ -216,8 +226,82 @@ def test_patch_rule_with_structured_field_replaces_conditions(env):
     assert resp.status_code == 200, resp.text
     with SessionLocal() as s:
         rule = s.get(RoutingRule, rule_id)
-        # industry not submitted → cleared. country is the only condition now.
-        assert rule.conditions == {"company_country": ["United States", "Canada"]}
+        assert rule.conditions == {
+            "company_industry": ["oil and gas"],
+            "company_country": ["United States", "Canada"],
+            "company_tier": ["strategic"],
+            "company_domain": ["exxonmobil.com"],
+        }
+
+
+def test_patch_rule_with_empty_field_clears_only_that_key(env):
+    """Submitting `country=` (empty) clears only country, leaves rest alone."""
+    client, SessionLocal = env
+    with SessionLocal() as s:
+        s.add(Rep(email="rep@x.com", name="R", timezone="UTC", is_active=True))
+        rule = RoutingRule(
+            name="initial",
+            priority=10,
+            conditions={
+                "company_industry": ["healthcare"],
+                "company_country": ["United States"],
+            },
+            assigned_rep_email="rep@x.com",
+            assigned_rep_name="R",
+            is_active=True,
+        )
+        s.add(rule)
+        s.commit()
+        rule_id = rule.id
+
+    # Empty string for country signals "clear country"
+    resp = client.patch(
+        f"/admin/routing-rules/{rule_id}",
+        content="country=",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert resp.status_code == 200, resp.text
+    with SessionLocal() as s:
+        rule = s.get(RoutingRule, rule_id)
+        assert rule.conditions == {"company_industry": ["healthcare"]}
+
+
+def test_patch_rule_with_assigned_rep_only_does_not_touch_conditions(env):
+    """Changing the rep on a rule must not clear any conditions."""
+    client, SessionLocal = env
+    with SessionLocal() as s:
+        s.add_all([
+            Rep(email="old@x.com", name="Old", timezone="UTC", is_active=True),
+            Rep(email="new@x.com", name="New", timezone="UTC", is_active=True),
+        ])
+        rule = RoutingRule(
+            name="initial",
+            priority=10,
+            conditions={
+                "company_industry": ["aerospace"],
+                "company_country": ["France"],
+            },
+            assigned_rep_email="old@x.com",
+            assigned_rep_name="Old",
+            is_active=True,
+        )
+        s.add(rule)
+        s.commit()
+        rule_id = rule.id
+
+    resp = client.patch(
+        f"/admin/routing-rules/{rule_id}",
+        content="assigned_rep_email=new@x.com",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert resp.status_code == 200, resp.text
+    with SessionLocal() as s:
+        rule = s.get(RoutingRule, rule_id)
+        assert rule.assigned_rep_email == "new@x.com"
+        assert rule.conditions == {
+            "company_industry": ["aerospace"],
+            "company_country": ["France"],
+        }
 
 
 # ----- GET /admin/routing-rules/preview (AC #11) ---------------------------

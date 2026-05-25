@@ -300,18 +300,31 @@ def routing_update(
         if rule is None:
             raise HTTPException(404, "rule not found")
 
-        # If any structured field was submitted (even as []), use structured.
-        # Else if `conditions` JSON string was sent, parse that.
+        # MERGE semantics: only touch the keys that were actually submitted.
+        # FastAPI gives us None for "not in form" vs. a list for "submitted"
+        # (possibly empty / containing ""). This lets the chip widget PATCH
+        # just `country=...` without wiping industry/tier/domain.
+        #
+        # The full-replace path is the legacy `conditions=<JSON>` form field.
         structured_present = any(
             v is not None for v in (industry, country, tier, domain)
         )
         if structured_present:
-            new_cond = _build_conditions(
-                industry=industry or [],
-                country=country or [],
-                tier=tier or [],
-                domain=domain or [],
-            )
+            new_cond = dict(rule.conditions or {})
+            updates = {
+                "company_industry": industry,
+                "company_country": country,
+                "company_tier": tier,
+                "company_domain": domain,
+            }
+            for cond_key, submitted in updates.items():
+                if submitted is None:
+                    continue  # field not sent — leave existing value untouched
+                cleaned = _clean_list(submitted)
+                if cleaned:
+                    new_cond[cond_key] = cleaned
+                else:
+                    new_cond.pop(cond_key, None)
             _validate_conditions(new_cond)
             rule.conditions = new_cond
         elif conditions is not None:
