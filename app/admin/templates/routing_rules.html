@@ -99,7 +99,7 @@
   </td>
   <td class="px-2 py-2 w-52">
     <div class="country-chips space-y-1" data-rule-id="{{ rule.id }}"
-         data-values="{{ (rule.conditions.get('company_country') or []) | tojson }}">
+         data-values='{{ (rule.conditions.get("company_country") or []) | tojson }}'>
       <div class="chips-container flex flex-wrap gap-1"></div>
       <input type="text"
              list="canonical-countries"
