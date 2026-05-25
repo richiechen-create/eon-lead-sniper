@@ -58,7 +58,7 @@
         <tbody>
           {% for row in seg.rows %}
           {% set c = row.company %}
-          <tr class="border-t border-gray-100">
+          <tr class="border-t border-gray-100 {% if loop.index0 >= 5 %}segment-extra-row hidden{% endif %}">
             <td class="px-3 py-2">
               <input value="{{ c.company_name }}" name="company_name"
                      hx-patch="/admin/companies/{{ c.id }}" hx-trigger="change" hx-swap="none"
@@ -164,6 +164,18 @@
             </td>
           </tr>
           {% endfor %}
+          {% if seg.rows | length > 5 %}
+          <tr class="border-t border-brand-border bg-brand-navy-50/50">
+            <td colspan="9" class="px-4 py-2 text-center">
+              <button type="button" class="show-all-toggle text-sm text-brand-crimson hover:underline font-medium"
+                      data-segment-key="{{ seg.key }}"
+                      data-hidden-count="{{ seg.rows | length - 5 }}"
+                      data-total="{{ seg.rows | length }}">
+                Show all {{ seg.rows | length }} &rarr;
+              </button>
+            </td>
+          </tr>
+          {% endif %}
         </tbody>
       </table>
       {% else %}
@@ -269,6 +281,40 @@ Acme,acme.com,manufacturing,United States,tier1,10,ld_leadership;ehs_leadership"
 <script>
 const LS_KEY = 'lead_engine_segment_collapsed_v1';
 const collapsed = new Set(JSON.parse(localStorage.getItem(LS_KEY) || '[]'));
+
+// Per-segment "show all rows" memory (segments with >5 companies start truncated).
+const LS_KEY_EXPANDED = 'lead_engine_segment_rows_expanded_v1';
+const rowsExpanded = new Set(JSON.parse(localStorage.getItem(LS_KEY_EXPANDED) || '[]'));
+
+function applyRowExpansion(section) {
+  const key = section.dataset.segmentKey;
+  const extras = section.querySelectorAll('tr.segment-extra-row');
+  const toggle = section.querySelector('.show-all-toggle');
+  if (!extras.length || !toggle) return;
+  const expanded = rowsExpanded.has(key);
+  extras.forEach(r => r.classList.toggle('hidden', !expanded));
+  if (expanded) {
+    toggle.textContent = 'Show first 5 ↑';
+  } else {
+    toggle.textContent = 'Show all ' + toggle.dataset.total + ' →';
+  }
+}
+
+document.querySelectorAll('.show-all-toggle').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const section = btn.closest('section[data-segment-key]');
+    const key = section.dataset.segmentKey;
+    if (rowsExpanded.has(key)) {
+      rowsExpanded.delete(key);
+    } else {
+      rowsExpanded.add(key);
+    }
+    localStorage.setItem(LS_KEY_EXPANDED, JSON.stringify([...rowsExpanded]));
+    applyRowExpansion(section);
+  });
+});
+document.querySelectorAll('section[data-segment-key]').forEach(applyRowExpansion);
 
 function applyCollapsedState() {
   document.querySelectorAll('section[data-segment-key]').forEach(section => {
