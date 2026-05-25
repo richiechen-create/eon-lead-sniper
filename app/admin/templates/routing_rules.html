@@ -97,8 +97,15 @@
   <td class="px-2 py-2 w-44">
     {{ condition_field(rule.id, "industry", rule.conditions.get("company_industry") or [], "industry", "industries-list") }}
   </td>
-  <td class="px-2 py-2 w-44">
-    {{ condition_field(rule.id, "country", rule.conditions.get("company_country") or [], "country", "canonical-countries") }}
+  <td class="px-2 py-2 w-52">
+    <div class="country-chips space-y-1" data-rule-id="{{ rule.id }}"
+         data-values="{{ (rule.conditions.get('company_country') or []) | tojson }}">
+      <div class="chips-container flex flex-wrap gap-1"></div>
+      <input type="text"
+             list="canonical-countries"
+             placeholder="Add country..."
+             class="chip-add w-full text-xs border border-brand-border rounded px-1 py-0.5"/>
+    </div>
   </td>
   <td class="px-2 py-2 w-32">
     {{ condition_field(rule.id, "tier", rule.conditions.get("company_tier") or [], "tier", "tiers-list") }}
@@ -302,12 +309,97 @@ async function patchRuleScalar(ruleId, field, value) {
   }
 }
 
-// -------- Per-row condition inputs (industry/country/tier/domain) --------
+// -------- Per-row condition inputs (industry/tier/domain) --------
 document.querySelectorAll(".rule-condition").forEach(el => {
   el.addEventListener("change", () => {
     patchRuleCondition(el.dataset.ruleId, el.dataset.field, el.value);
   });
 });
+
+// -------- Country chip widget (per rule row) --------
+function initCountryChips(container) {
+  const ruleId = container.dataset.ruleId;
+  const chipsBox = container.querySelector(".chips-container");
+  const input = container.querySelector(".chip-add");
+  let values = [];
+  try { values = JSON.parse(container.dataset.values || "[]"); } catch (e) { values = []; }
+
+  function render() {
+    chipsBox.innerHTML = "";
+    values.forEach((v) => {
+      const chip = document.createElement("span");
+      chip.className = "inline-flex items-center bg-brand-navy-50 text-brand-navy text-xs rounded px-1.5 py-0.5";
+      chip.textContent = v;
+      const x = document.createElement("button");
+      x.type = "button";
+      x.setAttribute("aria-label", "Remove " + v);
+      x.className = "ml-1 text-brand-muted hover:text-brand-crimson leading-none";
+      x.innerHTML = "&times;";
+      x.addEventListener("click", () => {
+        values = values.filter(z => z !== v);
+        render();
+        persist();
+      });
+      chip.appendChild(x);
+      chipsBox.appendChild(chip);
+    });
+  }
+
+  async function persist() {
+    const body = new URLSearchParams();
+    if (values.length === 0) {
+      body.append("country", "");  // signal "clear country"
+    } else {
+      values.forEach(v => body.append("country", v));
+    }
+    const resp = await fetch(`/admin/routing-rules/${ruleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      alert(data.detail || "Save failed");
+    }
+  }
+
+  function tryAdd(raw) {
+    const v = (raw || "").trim();
+    if (!v) return false;
+    if (values.includes(v)) return false;
+    values.push(v);
+    render();
+    persist();
+    return true;
+  }
+
+  // Add on Enter / comma / Tab
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === "," || e.key === "Tab") {
+      const v = input.value.replace(/,$/, "");
+      if (v.trim()) {
+        e.preventDefault();
+        if (tryAdd(v)) input.value = "";
+      }
+    } else if (e.key === "Backspace" && !input.value && values.length) {
+      const last = values[values.length - 1];
+      values = values.slice(0, -1);
+      render();
+      persist();
+    }
+  });
+  // Add on blur or when the user picks an option from the datalist
+  input.addEventListener("change", () => {
+    if (input.value.trim()) {
+      tryAdd(input.value);
+      input.value = "";
+    }
+  });
+
+  render();
+}
+
+document.querySelectorAll(".country-chips").forEach(initCountryChips);
 
 // -------- Name inputs --------
 document.querySelectorAll(".rule-name").forEach(el => {
