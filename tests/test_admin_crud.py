@@ -235,7 +235,9 @@ def test_bulk_import_accepts_messy_real_world_headers(env):
     with SessionLocal() as s:
         lilly = s.query(Company).filter_by(domain="lilly.com").one()
         assert lilly.company_name == "Eli Lilly"
-        assert lilly.industry == "Healthcare"
+        # Industry is normalized to lowercase on write to prevent
+        # "Healthcare" vs "healthcare" from creating duplicate segments.
+        assert lilly.industry == "healthcare"
         assert lilly.country == "United States"
 
         # URL pasted as domain should normalize to bare apex

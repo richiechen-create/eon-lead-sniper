@@ -148,6 +148,14 @@ def companies_index(request: Request, _user: str = Depends(require_admin)):
     )
 
 
+def _normalize_industry(value: str | None) -> str | None:
+    """Lowercase + strip industry so casing differences don't create duplicate segments."""
+    if value is None:
+        return None
+    s = value.strip().lower()
+    return s or None
+
+
 @router.post("")
 def companies_create(
     response: Response,
@@ -191,7 +199,7 @@ def companies_create(
         company = Company(
             company_name=company_name.strip(),
             domain=domain,
-            industry=(industry or "").strip() or None,
+            industry=_normalize_industry(industry),
             country=(country or "").strip() or None,
             tier=(tier or "").strip() or None,
             max_contacts_per_run=max_contacts_per_run,
@@ -240,7 +248,7 @@ def companies_update(
                 )
             company.country = country_clean or None
         if industry is not None:
-            new_industry = (industry or "").strip() or None
+            new_industry = _normalize_industry(industry)
             if _segment_key(new_industry) != _segment_key(company.industry):
                 industry_changed = True
             company.industry = new_industry
@@ -361,7 +369,7 @@ def companies_bulk_import(
                 session.add(company)
                 existing[domain] = company
             company.company_name = row.get("company_name") or company.company_name
-            company.industry = (row.get("industry") or None)
+            company.industry = _normalize_industry(row.get("industry"))
             company.country = country or None
             company.tier = (row.get("tier") or None)
             try:

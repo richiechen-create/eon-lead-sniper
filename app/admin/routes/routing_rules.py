@@ -98,9 +98,14 @@ def _build_conditions(
     tier: list[str],
     domain: list[str],
 ) -> dict:
-    """Compose the `conditions` dict from structured form fields. Drops empties."""
+    """Compose the `conditions` dict from structured form fields. Drops empties.
+
+    Industry values are lowercased so case differences ("Oil and Gas" vs
+    "oil and gas") can't create parallel segments. `_matches()` already
+    compares case-insensitively, so this purely keeps the stored data clean.
+    """
     out: dict[str, list[str]] = {}
-    ind = _clean_list(industry)
+    ind = [v.lower() for v in _clean_list(industry)]
     cou = _clean_list(country)
     tie = _clean_list(tier)
     dom = _clean_list(domain)
@@ -321,6 +326,8 @@ def routing_update(
                 if submitted is None:
                     continue  # field not sent — leave existing value untouched
                 cleaned = _clean_list(submitted)
+                if cond_key == "company_industry":
+                    cleaned = [v.lower() for v in cleaned]
                 if cleaned:
                     new_cond[cond_key] = cleaned
                 else:
