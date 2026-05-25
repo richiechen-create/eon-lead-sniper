@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from app.admin.auth import require_admin
 from app.admin.templating import render
 from app.db import session_scope
-from app.models import CompanyRepAssignment, Lead, Rep, RoutingRule
+from app.models import Company, CompanyRepAssignment, Lead, Rep, RoutingRule
 
 router = APIRouter(prefix="/reps")
 
@@ -109,22 +109,22 @@ def reps_delete(
             ).scalar_one()
             or 0
         )
-        assignment_refs = int(
+        rule_rows = list(
             session.execute(
-                select(func.count(CompanyRepAssignment.id)).where(
-                    CompanyRepAssignment.rep_email == email
-                )
-            ).scalar_one()
-            or 0
-        )
-        rule_refs = int(
-            session.execute(
-                select(func.count(RoutingRule.id)).where(
+                select(RoutingRule.name, RoutingRule.is_active).where(
                     RoutingRule.assigned_rep_email == email
                 )
-            ).scalar_one()
-            or 0
+            ).all()
         )
+        assignment_rows = list(
+            session.execute(
+                select(Company.company_name, CompanyRepAssignment.lead_country)
+                .join(Company, Company.id == CompanyRepAssignment.company_id)
+                .where(CompanyRepAssignment.rep_email == email)
+            ).all()
+        )
+        rule_refs = len(rule_rows)
+        assignment_refs = len(assignment_rows)
         total_refs = lead_refs + assignment_refs + rule_refs
 
         if total_refs == 0:
@@ -134,20 +134,36 @@ def reps_delete(
             return {"deleted": True}
 
         rep.is_active = False
-        parts = []
+
+        parts: list[str] = []
         if lead_refs:
             parts.append(f"{lead_refs} lead(s)")
-        if assignment_refs:
-            parts.append(f"{assignment_refs} per-company assignment(s)")
         if rule_refs:
-            parts.append(f"{rule_refs} routing rule(s)")
+            names = [
+                f"\"{n}\"{'' if active else ' (inactive)'}"
+                for n, active in rule_rows
+            ]
+            parts.append(
+                f"{rule_refs} routing rule(s): " + ", ".join(names[:5])
+                + (f", +{rule_refs - 5} more" if rule_refs > 5 else "")
+            )
+        if assignment_refs:
+            pairs = [
+                f"{cn} ({country if country != '*' else 'any'})"
+                for cn, country in assignment_rows
+            ]
+            parts.append(
+                f"{assignment_refs} per-company assignment(s): " + ", ".join(pairs[:5])
+                + (f", +{assignment_refs - 5} more" if assignment_refs > 5 else "")
+            )
+
         message = (
-            f"{email} is referenced by {' and '.join(parts)}, so it was deactivated "
-            "instead of removed. Reactivate via the active/inactive pill, or remove the "
-            "references first and try again."
+            f"{email} was deactivated instead of removed because it is referenced by:\n\n"
+            + "\n".join(f"  • {p}" for p in parts)
+            + "\n\nTo fully remove this rep, edit Routing defaults / per-company "
+            "assignments to point elsewhere, or accept the deactivation (digests stop, "
+            "but historical leads keep their attribution)."
         )
-        # HX-Trigger fires a custom client event that JS handles with alert() + reload.
-        # This survives the page redirect (the toast doesn't).
         response.headers["HX-Trigger"] = json.dumps({"rep-deactivated": {"message": message}})
         return {
             "deactivated": True,
@@ -155,4 +171,8 @@ def reps_delete(
             "lead_refs": lead_refs,
             "assignment_refs": assignment_refs,
             "rule_refs": rule_refs,
+            "rules": [n for n, _ in rule_rows],
+            "assignments": [
+                {"company": cn, "lead_country": country} for cn, country in assignment_rows
+            ],
         }
