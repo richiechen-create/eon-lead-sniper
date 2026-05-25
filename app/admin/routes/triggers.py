@@ -3,17 +3,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
 
 from app.admin.auth import require_admin
 from app.config import get_settings
 from app.db import session_scope
 from app.digest.admin_summary import send_admin_summary
 from app.digest.builder import build_digest
-from app.digest.scheduler import run_digest_tick
+from app.digest.scheduler import _pending_leads_for_rep, run_digest_tick
 from app.email.sender import Attachment, send_email
-from app.models import Company, Lead
-from app.models.base import utcnow
+from app.models import Rep
 from app.tasks.enrichment import run_enrichment
 
 router = APIRouter(prefix="/triggers")
@@ -62,12 +60,17 @@ def trigger_digest(send_admin: bool = False, _user: str = Depends(require_admin)
 
 @router.post("/test-digest")
 def trigger_test_digest(_user: str = Depends(require_admin)) -> dict:
-    """Send a sample digest to ADMIN_EMAIL.
+    """Send a faithful preview of one rep's next digest to ADMIN_EMAIL.
 
-    Uses real leads with an email address if any exist (does NOT flip their
-    delivery_status — safe to call repeatedly). Falls back to a synthetic
-    sample if the DB has no leads yet, so the operator can preview the format.
-    Subject is prefixed with [TEST] so it can't be mistaken for a real digest.
+    Behavior:
+      - Picks the first active rep (alphabetical by email) who has at least
+        one pending lead with a non-null email.
+      - Uses the same lead filter as the production scheduler
+        (`_pending_leads_for_rep`): pending status + has email, ordered by
+        date_discovered ASC, honoring daily_lead_cap.
+      - Sends to ADMIN_EMAIL with `[TEST]` subject prefix.
+      - Does NOT flip delivery_status, does NOT create a DigestRun row.
+      - If no rep qualifies, returns {"sent": False, ...} without sending.
     """
     settings = get_settings()
     to_email = settings.ADMIN_EMAIL
@@ -79,43 +82,39 @@ def trigger_test_digest(_user: str = Depends(require_admin)) -> dict:
         )
 
     with session_scope() as session:
-        leads = list(
+        active_reps = list(
             session.execute(
-                select(Lead)
-                .options(joinedload(Lead.company))
-                .where(Lead.email.is_not(None))
-                .order_by(Lead.date_discovered.desc())
-                .limit(10)
+                select(Rep)
+                .where(Rep.is_active == True)  # noqa: E712
+                .order_by(Rep.email)
             ).scalars()
         )
-        synthetic = False
-        if not leads:
-            # No real leads yet — build a transient sample so the operator
-            # can still preview the format. Nothing is persisted.
-            fake_company = Company(
-                company_name="Acme Corp (sample)", domain="acme.example.com"
-            )
-            fake_lead = Lead(
-                apollo_person_id="sample-1",
-                full_name="Jane Doe",
-                title="VP Learning & Development",
-                seniority="vp",
-                department="Human Resources",
-                linkedin_url="https://linkedin.com/in/janedoe",
-                email="jane.doe@acme.example.com",
-                date_discovered=utcnow(),
-            )
-            fake_lead.company = fake_company
-            leads = [fake_lead]
-            synthetic = True
 
-        # Use the first lead's rep info for "Hi {rep_first_name}".
-        first_rep_email = leads[0].assigned_rep_email or to_email
-        first_rep_name = leads[0].assigned_rep_name or "there"
+        selected_rep = None
+        selected_leads: list = []
+        for rep in active_reps:
+            leads = _pending_leads_for_rep(session, rep)
+            if leads:
+                selected_rep = rep
+                selected_leads = leads
+                break
 
-        digest = build_digest(first_rep_email, first_rep_name, leads, datetime.utcnow())
+        if selected_rep is None:
+            return {
+                "sent": False,
+                "reason": "no leads to preview",
+                "preview_rep": None,
+                "leads": 0,
+            }
+
+        digest = build_digest(
+            selected_rep.email, selected_rep.name, selected_leads, datetime.utcnow()
+        )
         if digest is None:
             raise HTTPException(500, "could not build digest")
+
+        preview_rep_email = selected_rep.email
+        lead_count = len(selected_leads)
 
     try:
         send_email(
@@ -140,7 +139,8 @@ def trigger_test_digest(_user: str = Depends(require_admin)) -> dict:
         )
 
     return {
+        "sent": True,
         "sent_to": to_email,
-        "leads_in_digest": len(leads),
-        "synthetic": synthetic,
+        "preview_rep": preview_rep_email,
+        "leads": lead_count,
     }
