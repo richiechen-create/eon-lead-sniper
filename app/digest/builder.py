@@ -124,10 +124,13 @@ def _build_csv(leads: list[Lead]) -> bytes:
         [
             "Company",
             "Domain",
-            "Full Name",
+            "First Name",
+            "Last Name",
             "Title",
             "Seniority",
             "Department",
+            "Country",
+            "City",
             "Email",
             "LinkedIn URL",
             "Date Discovered",
@@ -135,14 +138,24 @@ def _build_csv(leads: list[Lead]) -> bytes:
     )
     for lead in leads:
         company = lead.company
+        # Fall back to splitting full_name if first/last weren't separately populated.
+        first = lead.first_name or ""
+        last = lead.last_name or ""
+        if not (first or last) and lead.full_name:
+            parts = lead.full_name.strip().split(None, 1)
+            first = parts[0] if parts else ""
+            last = parts[1] if len(parts) > 1 else ""
         writer.writerow(
             [
                 company.company_name or "",
                 company.domain or "",
-                lead.full_name or "",
+                first,
+                last,
                 lead.title or "",
                 lead.seniority or "",
                 lead.department or "",
+                lead.person_country or "",
+                lead.person_city or "",
                 lead.email or "",
                 lead.linkedin_url or "",
                 lead.date_discovered.strftime("%Y-%m-%d") if lead.date_discovered else "",
