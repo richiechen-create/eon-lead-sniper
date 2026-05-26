@@ -27,11 +27,16 @@
   </div>
 
   {% if rows %}
-  <table class="w-full text-sm bg-white border border-brand-border rounded mb-3">
+  <table class="w-full text-sm bg-white border border-brand-border rounded mb-3 table-fixed">
+    <colgroup>
+      <col style="width: 30%">
+      <col>
+      <col style="width: 5rem">
+    </colgroup>
     <tbody>
       {% for row in rows %}
       <tr class="border-t border-brand-border first:border-t-0">
-        <td class="px-3 py-1.5 font-mono text-xs w-1/3">
+        <td class="px-3 py-1.5 font-mono text-xs truncate">
           {{ "Any (wildcard)" if row.assignment.lead_country == '*' else row.assignment.lead_country }}
         </td>
         <td class="px-3 py-1.5 align-middle">
@@ -43,12 +48,12 @@
             class="inline">
             <input type="hidden" name="lead_country" value="{{ row.assignment.lead_country }}"/>
             <select name="rep_email" onchange="this.form.requestSubmit()"
-                    class="border border-brand-border rounded px-2 py-0.5 text-sm bg-white">
+                    class="border border-brand-border rounded px-2 py-0.5 text-sm bg-white max-w-full">
               {% for team, team_reps in reps_by_team.items() %}
                 <optgroup label="{{ team }}">
                   {% for r in team_reps %}
                     <option value="{{ r.email }}" {% if r.email == row.assignment.rep_email %}selected{% endif %}>
-                      {{ r.name }} ({{ r.email }})
+                      {{ r.name }}
                     </option>
                   {% endfor %}
                 </optgroup>
@@ -70,7 +75,8 @@
             hx-delete="/admin/companies/{{ company.id }}/assignments/{{ row.assignment.id }}"
             hx-target="closest .assignment-editor-container"
             hx-swap="innerHTML"
-            class="text-xs text-brand-crimson hover:text-brand-crimson-700">
+            hx-confirm="Remove this assignment? Lead routing will fall back to the segment rules."
+            class="text-xs text-brand-crimson hover:text-brand-crimson-700 whitespace-nowrap">
             Remove
           </button>
         </td>
