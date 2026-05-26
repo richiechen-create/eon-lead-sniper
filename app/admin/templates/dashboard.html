@@ -139,6 +139,78 @@
 
 <div class="bg-white rounded-lg shadow mb-6">
   <div class="px-4 py-3 border-b border-brand-border flex items-center justify-between">
+    <p class="text-sm font-medium text-brand-ink">Leads delivered per rep</p>
+    <div class="flex items-center bg-brand-navy-50 rounded p-0.5 text-xs">
+      <button id="delivered-tab-today"
+              class="px-3 py-1 rounded bg-white text-brand-ink shadow-sm font-medium"
+              onclick="showDeliveredTab('today')">Today</button>
+      <button id="delivered-tab-overall"
+              class="px-3 py-1 rounded text-brand-muted hover:text-brand-ink"
+              onclick="showDeliveredTab('overall')">Overall</button>
+    </div>
+  </div>
+
+  <div id="delivered-pane-today">
+    {% if delivered_today_per_rep %}
+    <table class="w-full text-sm">
+      <thead class="text-xs text-brand-muted uppercase">
+        <tr><th class="text-left px-4 py-2">Rep</th><th class="text-right px-4 py-2">Delivered today</th></tr>
+      </thead>
+      <tbody>
+      {% for email, count in delivered_today_per_rep %}
+        <tr class="border-t border-gray-100">
+          <td class="px-4 py-2">
+            <a href="/admin/leads?rep={{ email }}&status=delivered" class="text-brand-crimson hover:underline">{{ email }}</a>
+          </td>
+          <td class="px-4 py-2 text-right font-mono">{{ count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-6 text-sm text-brand-muted">No leads delivered yet today.</p>
+    {% endif %}
+  </div>
+
+  <div id="delivered-pane-overall" class="hidden">
+    {% if delivered_overall_per_rep %}
+    <table class="w-full text-sm">
+      <thead class="text-xs text-brand-muted uppercase">
+        <tr><th class="text-left px-4 py-2">Rep</th><th class="text-right px-4 py-2">Delivered all-time</th></tr>
+      </thead>
+      <tbody>
+      {% for email, count in delivered_overall_per_rep %}
+        <tr class="border-t border-gray-100">
+          <td class="px-4 py-2">
+            <a href="/admin/leads?rep={{ email }}&status=delivered" class="text-brand-crimson hover:underline">{{ email }}</a>
+          </td>
+          <td class="px-4 py-2 text-right font-mono">{{ count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="px-4 py-6 text-sm text-brand-muted">No leads delivered yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function showDeliveredTab(which) {
+  const today = which === 'today';
+  document.getElementById('delivered-pane-today').classList.toggle('hidden', !today);
+  document.getElementById('delivered-pane-overall').classList.toggle('hidden', today);
+  document.getElementById('delivered-tab-today').className =
+    'px-3 py-1 rounded ' +
+    (today ? 'bg-white text-brand-ink shadow-sm font-medium' : 'text-brand-muted hover:text-brand-ink');
+  document.getElementById('delivered-tab-overall').className =
+    'px-3 py-1 rounded ' +
+    (!today ? 'bg-white text-brand-ink shadow-sm font-medium' : 'text-brand-muted hover:text-brand-ink');
+}
+</script>
+
+<div class="bg-white rounded-lg shadow mb-6">
+  <div class="px-4 py-3 border-b border-brand-border flex items-center justify-between">
     <p class="text-sm font-medium text-brand-ink">Data hygiene</p>
     {% if drift_country_count > 0 %}
       <span class="text-xs px-2 py-0.5 rounded bg-brand-crimson-50 text-brand-crimson">{{ drift_country_count }} non-canonical</span>

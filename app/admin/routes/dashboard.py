@@ -46,6 +46,25 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
             )
         )
 
+        # Delivered counts for the new card — both today and all-time.
+        delivered_today_per_rep = list(
+            session.execute(
+                select(Lead.assigned_rep_email, func.count(Lead.id))
+                .where(Lead.delivery_status == "delivered")
+                .where(Lead.delivered_at >= start_today)
+                .group_by(Lead.assigned_rep_email)
+                .order_by(func.count(Lead.id).desc())
+            )
+        )
+        delivered_overall_per_rep = list(
+            session.execute(
+                select(Lead.assigned_rep_email, func.count(Lead.id))
+                .where(Lead.delivery_status == "delivered")
+                .group_by(Lead.assigned_rep_email)
+                .order_by(func.count(Lead.id).desc())
+            )
+        )
+
         leads_per_day = list(
             session.execute(
                 select(func.date(Lead.date_discovered), func.count(Lead.id))
@@ -143,6 +162,8 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
         reps_emailed_today=reps_emailed_today,
         leads_delivered_today=leads_delivered_today,
         pending_per_rep=pending_per_rep,
+        delivered_today_per_rep=delivered_today_per_rep,
+        delivered_overall_per_rep=delivered_overall_per_rep,
         leads_per_day=leads_per_day,
         fallback_rate=fallback_rate,
         recent_errors=recent_errors[-10:],
