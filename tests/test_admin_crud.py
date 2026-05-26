@@ -286,6 +286,73 @@ def test_rep_create_accepts_valid_timezone(env):
         assert rep.timezone == "America/New_York"
 
 
+def test_rep_email_change_cascades_to_references(env):
+    """Editing a rep's email must update all places that reference the old email:
+    leads.assigned_rep_email, company_rep_assignments.rep_email, routing_rules.assigned_rep_email.
+    """
+    from app.models import CompanyRepAssignment, Lead, RoutingRule
+    from app.models.base import utcnow
+
+    client, SessionLocal = env
+
+    with SessionLocal() as s:
+        rep = Rep(email="old@x.com", name="Pranav", timezone="UTC", is_active=True)
+        s.add(rep)
+        s.flush()
+        rep_id = rep.id
+
+        company = Company(company_name="X", domain="x.com")
+        s.add(company)
+        s.flush()
+
+        s.add(Lead(
+            company_id=company.id,
+            apollo_person_id="p1",
+            email="lead@x.com",
+            assigned_rep_email="old@x.com",
+            delivery_status="pending",
+            date_discovered=utcnow(),
+        ))
+        s.add(CompanyRepAssignment(
+            company_id=company.id, lead_country="India", rep_email="old@x.com"
+        ))
+        s.add(RoutingRule(
+            name="r",
+            priority=10,
+            conditions={},
+            assigned_rep_email="old@x.com",
+            assigned_rep_name="Pranav",
+            is_active=True,
+        ))
+        s.commit()
+
+    resp = client.patch(f"/admin/reps/{rep_id}", data={"email": "new@x.com"})
+    assert resp.status_code == 200, resp.text
+
+    with SessionLocal() as s:
+        assert s.get(Rep, rep_id).email == "new@x.com"
+        assert s.query(Lead).filter_by(apollo_person_id="p1").one().assigned_rep_email == "new@x.com"
+        assert s.query(CompanyRepAssignment).one().rep_email == "new@x.com"
+        assert s.query(RoutingRule).filter_by(name="r").one().assigned_rep_email == "new@x.com"
+        # Nothing left at the old email
+        assert s.query(Lead).filter_by(assigned_rep_email="old@x.com").count() == 0
+
+
+def test_rep_email_change_rejects_clash(env):
+    client, SessionLocal = env
+    with SessionLocal() as s:
+        s.add_all([
+            Rep(email="taken@x.com", name="Other", timezone="UTC", is_active=True),
+            Rep(email="me@x.com", name="Me", timezone="UTC", is_active=True),
+        ])
+        s.commit()
+        me_id = s.query(Rep).filter_by(email="me@x.com").one().id
+
+    resp = client.patch(f"/admin/reps/{me_id}", data={"email": "taken@x.com"})
+    assert resp.status_code == 400
+    assert "taken@x.com" in resp.json()["detail"]
+
+
 def test_rep_patch_rejects_bad_timezone(env):
     client, SessionLocal = env
     with SessionLocal() as s:

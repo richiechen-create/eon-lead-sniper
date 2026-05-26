@@ -65,6 +65,7 @@ def reps_create(
 def reps_update(
     rep_id: str,
     response: Response,
+    email: Optional[str] = Form(None),
     timezone: Optional[str] = Form(None),
     team: Optional[str] = Form(None),
     daily_lead_cap: Optional[str] = Form(None),
@@ -76,6 +77,48 @@ def reps_update(
         rep = session.get(Rep, rep_id)
         if rep is None:
             raise HTTPException(404, "rep not found")
+
+        if email is not None:
+            new_email = email.strip().lower()
+            if not new_email or "@" not in new_email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid email",
+                    headers={"X-Toast": "Invalid email"},
+                )
+            if new_email != rep.email:
+                # Ensure the new email isn't already taken by another rep.
+                clash = session.execute(
+                    select(Rep).where(Rep.email == new_email)
+                ).scalar_one_or_none()
+                if clash is not None and clash.id != rep.id:
+                    msg = f"Another rep already has email {new_email}"
+                    raise HTTPException(
+                        status_code=400, detail=msg, headers={"X-Toast": msg}
+                    )
+                old_email = rep.email
+                # Cascade the email change everywhere it's referenced.
+                lead_updates = (
+                    session.query(Lead)
+                    .filter(Lead.assigned_rep_email == old_email)
+                    .update({Lead.assigned_rep_email: new_email})
+                )
+                cra_updates = (
+                    session.query(CompanyRepAssignment)
+                    .filter(CompanyRepAssignment.rep_email == old_email)
+                    .update({CompanyRepAssignment.rep_email: new_email})
+                )
+                rule_updates = (
+                    session.query(RoutingRule)
+                    .filter(RoutingRule.assigned_rep_email == old_email)
+                    .update({RoutingRule.assigned_rep_email: new_email})
+                )
+                rep.email = new_email
+                response.headers["X-Toast"] = (
+                    f"Renamed to {new_email}. Updated {lead_updates} lead(s), "
+                    f"{cra_updates} assignment(s), {rule_updates} rule(s)."
+                )
+
         if name is not None:
             rep.name = name
         if timezone is not None:
@@ -92,7 +135,8 @@ def reps_update(
             rep.daily_lead_cap = int(daily_lead_cap) if daily_lead_cap.strip() else None
         if is_active is not None:
             rep.is_active = is_active
-    response.headers["X-Toast"] = "Saved"
+
+    response.headers.setdefault("X-Toast", "Saved")
     return {"ok": True}
 
 
