@@ -62,14 +62,17 @@ def derive_rule_name(conditions: dict) -> str:
     countries = [x for x in (conditions.get("company_country") or []) if x]
     tiers = [x for x in (conditions.get("company_tier") or []) if x]
     domains = [x for x in (conditions.get("company_domain") or []) if x]
+    lead_countries = [x for x in (conditions.get("lead_country") or []) if x]
 
     parts: list[str] = []
     if industries:
         parts.append(_join_short([_title(i) for i in industries]))
     if countries:
         parts.append(_join_short([_short_country(c) for c in countries]))
-    elif industries:
+    elif industries and not lead_countries:
         parts.append("any country")
+    if lead_countries:
+        parts.append("lead in " + _join_short([_short_country(c) for c in lead_countries]))
     if tiers:
         parts.append("tier " + _join_short(tiers))
     if domains:
@@ -97,18 +100,23 @@ def _build_conditions(
     country: list[str],
     tier: list[str],
     domain: list[str],
+    lead_country: list[str] | None = None,
 ) -> dict:
     """Compose the `conditions` dict from structured form fields. Drops empties.
 
     Industry values are lowercased so case differences ("Oil and Gas" vs
     "oil and gas") can't create parallel segments. `_matches()` already
     compares case-insensitively, so this purely keeps the stored data clean.
+
+    `country` maps to `company_country` (the company's HQ).
+    `lead_country` is the lead's personal country from Apollo (`person_country`).
     """
     out: dict[str, list[str]] = {}
     ind = [v.lower() for v in _clean_list(industry)]
     cou = _clean_list(country)
     tie = _clean_list(tier)
     dom = _clean_list(domain)
+    lcou = _clean_list(lead_country or [])
     if ind:
         out["company_industry"] = ind
     if cou:
@@ -117,16 +125,20 @@ def _build_conditions(
         out["company_tier"] = tie
     if dom:
         out["company_domain"] = dom
+    if lcou:
+        out["lead_country"] = lcou
     return out
 
 
 def _validate_conditions(cond: dict) -> None:
-    countries = cond.get("company_country") or []
-    if isinstance(countries, list):
-        bad = non_canonical_countries(countries)
+    for key, label in (("company_country", "Country"), ("lead_country", "Lead country")):
+        values = cond.get(key) or []
+        if not isinstance(values, list):
+            continue
+        bad = non_canonical_countries(values)
         if bad:
             msg = (
-                "Country contains unknown values: "
+                f"{label} contains unknown values: "
                 + ", ".join(repr(b) for b in bad)
                 + ". Pick from the canonical Apollo list."
             )
@@ -153,12 +165,17 @@ def _resolve_conditions_from_form(
     country: list[str],
     tier: list[str],
     domain: list[str],
+    lead_country: list[str] | None = None,
     conditions_raw: Optional[str],
 ) -> dict:
     """Prefer structured fields; fall back to raw JSON for backward compatibility."""
-    if any([industry, country, tier, domain]):
+    if any([industry, country, tier, domain, lead_country or []]):
         cond = _build_conditions(
-            industry=industry, country=country, tier=tier, domain=domain
+            industry=industry,
+            country=country,
+            tier=tier,
+            domain=domain,
+            lead_country=lead_country,
         )
         _validate_conditions(cond)
         return cond
@@ -248,6 +265,7 @@ def routing_create(
     country: list[str] = Form(default=[]),
     tier: list[str] = Form(default=[]),
     domain: list[str] = Form(default=[]),
+    lead_country: list[str] = Form(default=[]),
     conditions: Optional[str] = Form(None),  # backward compat JSON
     assigned_rep_email: str = Form(...),
     assigned_rep_name: str = Form(""),
@@ -258,6 +276,7 @@ def routing_create(
         country=country,
         tier=tier,
         domain=domain,
+        lead_country=lead_country,
         conditions_raw=conditions,
     )
     final_name = (name or "").strip() or derive_rule_name(cond_dict)
@@ -294,6 +313,7 @@ def routing_update(
     country: Optional[list[str]] = Form(None),
     tier: Optional[list[str]] = Form(None),
     domain: Optional[list[str]] = Form(None),
+    lead_country: Optional[list[str]] = Form(None),
     conditions: Optional[str] = Form(None),
     assigned_rep_email: Optional[str] = Form(None),
     assigned_rep_name: Optional[str] = Form(None),
@@ -312,7 +332,7 @@ def routing_update(
         #
         # The full-replace path is the legacy `conditions=<JSON>` form field.
         structured_present = any(
-            v is not None for v in (industry, country, tier, domain)
+            v is not None for v in (industry, country, tier, domain, lead_country)
         )
         if structured_present:
             new_cond = dict(rule.conditions or {})
@@ -321,6 +341,7 @@ def routing_update(
                 "company_country": country,
                 "company_tier": tier,
                 "company_domain": domain,
+                "lead_country": lead_country,
             }
             for cond_key, submitted in updates.items():
                 if submitted is None:
@@ -374,6 +395,7 @@ def routing_preview(
     country: Optional[str] = Query(None),
     tier: Optional[str] = Query(None),
     domain: Optional[str] = Query(None),
+    lead_country: Optional[str] = Query(None),
     _user: str = Depends(require_admin),
 ) -> dict:
     """Dry-run routing for a hypothetical lead. No DB write.
@@ -382,6 +404,8 @@ def routing_preview(
     through `route_lead()`. Per-company overrides won't fire (transient
     company has no id), so the result reflects routing-rules + fallback only —
     which is exactly what this page manages.
+
+    `country` here = company HQ; `lead_country` = lead's personal country.
     """
     company = Company(
         company_name="(preview)",
@@ -391,7 +415,9 @@ def routing_preview(
         tier=(tier or "").strip() or None,
     )
     with session_scope() as session:
-        decision = route_lead(session, company, lead_country=None)
+        decision = route_lead(
+            session, company, lead_country=(lead_country or "").strip() or None
+        )
         matched_name = None
         if decision.routing_rule_id is not None:
             rule = session.get(RoutingRule, decision.routing_rule_id)

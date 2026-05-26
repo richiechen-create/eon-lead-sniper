@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import Company, CompanyRepAssignment, Rep, RoutingRule
 
-_CONDITION_KEYS = ("company_industry", "company_country", "company_tier", "company_domain")
+_CONDITION_KEYS = (
+    "company_industry",
+    "company_country",
+    "company_tier",
+    "company_domain",
+    "lead_country",
+)
 
 
 @dataclass
@@ -19,8 +25,13 @@ class RoutingDecision:
     routing_status: str  # 'company_override' | 'rule_matched' | 'fallback'
 
 
-def _matches(conditions: dict, company: Company) -> bool:
-    """All present condition keys must match (AND). Unknown keys are ignored."""
+def _matches(conditions: dict, company: Company, lead_country: Optional[str] = None) -> bool:
+    """All present condition keys must match (AND). Unknown keys are ignored.
+
+    `lead_country` is the person's country from Apollo (lead.person_country).
+    It's distinct from `company_country` (the company's HQ). A rule may use
+    either, both, or neither.
+    """
     if not isinstance(conditions, dict):
         return False
     if "company_industry" in conditions:
@@ -38,6 +49,10 @@ def _matches(conditions: dict, company: Company) -> bool:
     if "company_domain" in conditions:
         allowed = conditions["company_domain"] or []
         if (company.domain or "") not in allowed:
+            return False
+    if "lead_country" in conditions:
+        allowed = conditions["lead_country"] or []
+        if (lead_country or "") not in allowed:
             return False
     return True
 
@@ -99,7 +114,7 @@ def route_lead(
         .order_by(RoutingRule.priority.asc(), RoutingRule.created_at.asc())
     ).scalars().all()
     for rule in rules:
-        if not rule.conditions or _matches(rule.conditions, company):
+        if not rule.conditions or _matches(rule.conditions, company, lead_country=lead_country):
             return RoutingDecision(
                 assigned_rep_email=rule.assigned_rep_email,
                 assigned_rep_name=rule.assigned_rep_name,

@@ -163,6 +163,60 @@ def test_override_only_applies_to_its_own_company(session):
     assert decision_b.routing_status == "rule_matched"
 
 
+def test_rule_with_lead_country_matches(session):
+    """New: routing rules can match on the lead's person_country."""
+    jeetesh = _seed_rep(session, "jeetesh@x.com", name="Jeetesh", team="sales")
+    _add_rule(
+        session,
+        priority=10,
+        name="Anything in UK -> Jeetesh",
+        conditions={"lead_country": ["United Kingdom"]},
+        email=jeetesh.email,
+    )
+    # Company HQ is in India — irrelevant; only the lead's country matters.
+    company = _seed_company(session, industry="oil and gas", country="India")
+    decision = route_lead(session, company, lead_country="United Kingdom")
+    assert decision.assigned_rep_email == "jeetesh@x.com"
+    assert decision.routing_status == "rule_matched"
+
+
+def test_rule_with_lead_country_does_not_match_other_country(session):
+    jeetesh = _seed_rep(session, "jeetesh@x.com", name="Jeetesh")
+    _add_rule(
+        session,
+        priority=10,
+        name="UK only",
+        conditions={"lead_country": ["United Kingdom"]},
+        email=jeetesh.email,
+    )
+    company = _seed_company(session, industry="oil and gas")
+    decision = route_lead(session, company, lead_country="Australia")
+    assert decision.routing_status == "fallback"
+
+
+def test_rule_with_both_company_and_lead_country_anded(session):
+    target = _seed_rep(session, "target@x.com", name="Target")
+    _add_rule(
+        session,
+        priority=10,
+        name="UK lead at US company",
+        conditions={
+            "company_country": ["United States"],
+            "lead_country": ["United Kingdom"],
+        },
+        email=target.email,
+    )
+    # Both match -> rule fires
+    us_co = _seed_company(session, industry="x", country="United States")
+    d = route_lead(session, us_co, lead_country="United Kingdom")
+    assert d.assigned_rep_email == "target@x.com"
+
+    # Company country wrong -> falls through
+    in_co = _seed_company(session, industry="x", country="India", domain="other.com")
+    d2 = route_lead(session, in_co, lead_country="United Kingdom")
+    assert d2.routing_status == "fallback"
+
+
 def test_override_with_no_lead_country_still_checks_wildcard(session):
     sarah = _seed_rep(session, "sarah@x.com", name="Sarah")
     company = _seed_company(session, industry="manufacturing")

@@ -43,8 +43,13 @@
              class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
     </div>
     <div class="flex-1 min-w-[10rem]">
-      <label class="block text-xs text-brand-muted">Country</label>
+      <label class="block text-xs text-brand-muted">Company HQ</label>
       <input id="test-country" list="canonical-countries" placeholder="—"
+             class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+    </div>
+    <div class="flex-1 min-w-[10rem]">
+      <label class="block text-xs text-brand-muted">Lead country</label>
+      <input id="test-lead-country" list="canonical-countries" placeholder="—"
              class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
     </div>
     <div class="flex-1 min-w-[8rem]">
@@ -98,12 +103,22 @@
     {{ condition_field(rule.id, "industry", rule.conditions.get("company_industry") or [], "industry", "industries-list") }}
   </td>
   <td class="px-2 py-2 w-52">
-    <div class="country-chips space-y-1" data-rule-id="{{ rule.id }}"
+    <div class="country-chips space-y-1" data-rule-id="{{ rule.id }}" data-field="country"
          data-values='{{ (rule.conditions.get("company_country") or []) | tojson }}'>
       <div class="chips-container flex flex-wrap gap-1"></div>
       <input type="text"
              list="canonical-countries"
-             placeholder="Add country..."
+             placeholder="Add company HQ..."
+             class="chip-add w-full text-xs border border-brand-border rounded px-1 py-0.5"/>
+    </div>
+  </td>
+  <td class="px-2 py-2 w-52">
+    <div class="country-chips space-y-1" data-rule-id="{{ rule.id }}" data-field="lead_country"
+         data-values='{{ (rule.conditions.get("lead_country") or []) | tojson }}'>
+      <div class="chips-container flex flex-wrap gap-1"></div>
+      <input type="text"
+             list="canonical-countries"
+             placeholder="Add lead country..."
              class="chip-add w-full text-xs border border-brand-border rounded px-1 py-0.5"/>
     </div>
   </td>
@@ -150,7 +165,8 @@
             <th class="px-3 py-2"></th>
             <th class="text-left px-3 py-2">Name</th>
             <th class="text-left px-2 py-2">Industry</th>
-            <th class="text-left px-2 py-2">Country</th>
+            <th class="text-left px-2 py-2">Company HQ</th>
+            <th class="text-left px-2 py-2">Lead country</th>
             <th class="text-left px-2 py-2">Tier</th>
             <th class="text-left px-2 py-2">Domain</th>
             <th class="text-left px-3 py-2">Rep</th>
@@ -215,9 +231,15 @@
                  class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
         </div>
         <div>
-          <label class="block text-xs text-brand-muted mb-1">Country (comma-separated)</label>
+          <label class="block text-xs text-brand-muted mb-1">Company HQ (comma-separated)</label>
           <input id="add-country" name="_country_csv" list="canonical-countries"
                  placeholder="e.g. United States, Canada"
+                 class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs text-brand-muted mb-1">Lead country (comma-separated)</label>
+          <input id="add-lead-country" name="_lead_country_csv" list="canonical-countries"
+                 placeholder="e.g. United Kingdom"
                  class="w-full border border-brand-border rounded px-2 py-1 text-sm"/>
         </div>
         <div>
@@ -319,6 +341,7 @@ document.querySelectorAll(".rule-condition").forEach(el => {
 // -------- Country chip widget (per rule row) --------
 function initCountryChips(container) {
   const ruleId = container.dataset.ruleId;
+  const field = container.dataset.field || "country";  // "country" or "lead_country"
   const chipsBox = container.querySelector(".chips-container");
   const input = container.querySelector(".chip-add");
   let values = [];
@@ -348,9 +371,9 @@ function initCountryChips(container) {
   async function persist() {
     const body = new URLSearchParams();
     if (values.length === 0) {
-      body.append("country", "");  // signal "clear country"
+      body.append(field, "");  // signal "clear"
     } else {
-      values.forEach(v => body.append("country", v));
+      values.forEach(v => body.append(field, v));
     }
     const resp = await fetch(`/admin/routing-rules/${ruleId}`, {
       method: "PATCH",
@@ -478,13 +501,14 @@ document.querySelectorAll(".rule-active-toggle").forEach(btn => {
     // Build new params object replacing the *_csv keys with real multi-value ones.
     const newParams = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
-      if (["_industry_csv", "_country_csv", "_tier_csv", "_domain_csv"].includes(k)) return;
+      if (["_industry_csv", "_country_csv", "_tier_csv", "_domain_csv", "_lead_country_csv"].includes(k)) return;
       newParams.append(k, v);
     });
     csvToList(params["_industry_csv"] || "").forEach(v => newParams.append("industry", v));
     csvToList(params["_country_csv"] || "").forEach(v => newParams.append("country", v));
     csvToList(params["_tier_csv"] || "").forEach(v => newParams.append("tier", v));
     csvToList(params["_domain_csv"] || "").forEach(v => newParams.append("domain", v));
+    csvToList(params["_lead_country_csv"] || "").forEach(v => newParams.append("lead_country", v));
     // Hand HTMX a flat object — we'll serialize ourselves via JSON detail field? No,
     // HTMX expects parameters to be a plain object. Convert: keep last value per
     // key for single-valued, but for repeating keys HTMX won't serialize correctly.
@@ -504,7 +528,7 @@ document.querySelectorAll(".rule-active-toggle").forEach(btn => {
 
 // -------- Test routing preview --------
 (function() {
-  const fields = ["test-industry", "test-country", "test-tier", "test-domain"];
+  const fields = ["test-industry", "test-country", "test-lead-country", "test-tier", "test-domain"];
   const result = document.getElementById("test-result");
   let timer = null;
   function preview() {
@@ -513,13 +537,15 @@ document.querySelectorAll(".rule-active-toggle").forEach(btn => {
       const params = new URLSearchParams();
       const ind = document.getElementById("test-industry").value.trim();
       const cou = document.getElementById("test-country").value.trim();
+      const lcou = document.getElementById("test-lead-country").value.trim();
       const tie = document.getElementById("test-tier").value.trim();
       const dom = document.getElementById("test-domain").value.trim();
       if (ind) params.append("industry", ind);
       if (cou) params.append("country", cou);
+      if (lcou) params.append("lead_country", lcou);
       if (tie) params.append("tier", tie);
       if (dom) params.append("domain", dom);
-      if (![ind, cou, tie, dom].some(Boolean)) {
+      if (![ind, cou, lcou, tie, dom].some(Boolean)) {
         result.textContent = "—";
         return;
       }
