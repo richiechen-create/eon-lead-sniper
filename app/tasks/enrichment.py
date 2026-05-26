@@ -86,15 +86,31 @@ def run_enrichment(
     *,
     apollo_client: Optional[ApolloClient] = None,
     industries: Optional[Iterable[str]] = None,
+    person_country_override: Optional[str] = None,
+    cap_override: Optional[int] = None,
 ) -> EnrichmentSummary:
     """Run enrichment across active companies.
 
-    `industries` (optional): if provided, restrict to companies whose
-    `industry` matches one of the given values (case-insensitive, trimmed).
-    Useful for scoping a manual run to a single segment.
+    `industries` (optional): restrict to companies whose `industry` matches
+    one of the given values (case-insensitive, trimmed). Useful for scoping
+    a manual run to a single segment.
+
+    `person_country_override` (optional): replace each company's
+    targeting-profile `locations` with `[person_country_override]` for this
+    run only. Used by the "Boost a country" feature to chase leads in a
+    specific country without permanently mutating any targeting profile.
+
+    `cap_override` (optional): replace each company's `max_contacts_per_run`
+    for this run only (also used by Boost so the operator can dial volume
+    per request).
     """
     settings = get_settings()
     run = EnrichmentRun(run_started_at=utcnow(), errors=[])
+    if person_country_override or cap_override is not None:
+        run.run_metadata = {
+            "boost_country": person_country_override,
+            "cap_override": cap_override,
+        }
     session.add(run)
     session.flush()
 
@@ -135,7 +151,12 @@ def run_enrichment(
 
             try:
                 count_for_company, enriched_for_company, credits_for_company = _process_company(
-                    session, client, company, run
+                    session,
+                    client,
+                    company,
+                    run,
+                    person_country_override=person_country_override,
+                    cap_override=cap_override,
                 )
                 candidates_found += count_for_company
                 contacts_enriched += enriched_for_company
@@ -189,6 +210,9 @@ def _process_company(
     client: ApolloClient,
     company: Company,
     run: EnrichmentRun,
+    *,
+    person_country_override: Optional[str] = None,
+    cap_override: Optional[int] = None,
 ) -> tuple[int, int, int]:
     profiles = [link.profile for link in company.targeting_links if link.profile.is_active]
     if not profiles:
@@ -197,6 +221,11 @@ def _process_company(
     titles, seniorities, locations, departments = _union_profiles(profiles)
     if not titles and not seniorities and not departments:
         return 0, 0, 0
+
+    # Boost override: replace profile locations with the single requested country
+    # so Apollo's person_locations filter chases leads in that country only.
+    if person_country_override:
+        locations = [person_country_override]
 
     query = SearchQuery(
         domain=company.domain,
@@ -210,7 +239,7 @@ def _process_company(
     contacts_enriched = 0
     credits_consumed = 0
     new_in_this_company = 0
-    cap = company.max_contacts_per_run or 10
+    cap = cap_override if cap_override is not None else (company.max_contacts_per_run or 10)
 
     for person in client.search_people(query):
         candidates_found += 1

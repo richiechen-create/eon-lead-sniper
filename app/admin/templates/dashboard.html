@@ -64,6 +64,10 @@
               class="w-full bg-white border border-brand-border text-brand-ink text-sm py-2 rounded hover:bg-brand-navy-50 font-medium">
         Re-route pending leads
       </button>
+      <button onclick="openBoostModal()"
+              class="w-full bg-white border border-brand-border text-brand-ink text-sm py-2 rounded hover:bg-brand-navy-50 font-medium">
+        Boost a country ↗
+      </button>
       <div>
         <label class="block text-xs font-medium text-brand-muted mb-1">Send test digest to me</label>
         <div class="flex gap-2">
@@ -206,6 +210,156 @@ function showDeliveredTab(which) {
   document.getElementById('delivered-tab-overall').className =
     'px-3 py-1 rounded ' +
     (!today ? 'bg-white text-brand-ink shadow-sm font-medium' : 'text-brand-muted hover:text-brand-ink');
+}
+</script>
+
+<div class="bg-white rounded-lg shadow mb-6">
+  <div class="px-4 py-3 border-b border-brand-border flex items-center justify-between">
+    <p class="text-sm font-medium text-brand-ink">Lead coverage by country</p>
+    <span class="text-xs text-brand-muted">last 30 days · top 8{% if country_coverage_total_countries > 8 %} of {{ country_coverage_total_countries }}{% endif %}</span>
+  </div>
+  {% if country_coverage %}
+  <div class="px-4 py-3 space-y-1.5">
+    {% for row in country_coverage %}
+      {% set pct = (100 * row.count / country_coverage_max) | round | int %}
+      <button type="button"
+              onclick="openBoostModal('{{ row.country | replace("'", "\\'") }}')"
+              class="w-full flex items-center gap-3 text-left hover:bg-brand-navy-50 px-2 py-1 rounded">
+        <span class="text-xs text-brand-ink w-44 truncate">{{ row.country }}</span>
+        <span class="flex-1 bg-gray-100 rounded h-3 overflow-hidden relative">
+          <span class="block h-3 bg-brand-navy" style="width: {{ pct }}%"></span>
+        </span>
+        <span class="text-xs font-mono text-brand-muted w-12 text-right">{{ row.count }}</span>
+      </button>
+    {% endfor %}
+  </div>
+  {% if country_coverage_total_countries > 8 %}
+    <p class="px-4 pb-3 text-xs text-brand-muted">{{ country_coverage_total_countries - 8 }} more countries not shown — click any country above to boost it.</p>
+  {% endif %}
+  {% else %}
+  <p class="px-4 py-6 text-sm text-brand-muted">No leads with country in the last 30 days. Run an enrichment to populate.</p>
+  {% endif %}
+</div>
+
+<!-- Boost a country modal -->
+<div id="boost-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+    <h2 class="text-lg font-semibold text-brand-ink mb-4">Boost a country</h2>
+    <p class="text-xs text-brand-muted mb-4">
+      One-off enrichment scoped to a single country. Overrides each company's
+      targeting-profile locations for this run only — your profiles aren't
+      mutated.
+    </p>
+
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-brand-muted mb-1">Country</label>
+        <input id="boost-country" list="canonical-countries"
+               placeholder="e.g. India"
+               class="w-full border border-brand-border rounded px-2 py-1.5 text-sm"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-brand-muted mb-1">Per-company cap</label>
+        <input id="boost-cap" type="number" min="1" value="10"
+               class="w-full border border-brand-border rounded px-2 py-1.5 text-sm"/>
+        <p class="text-xs text-brand-muted mt-1">Overrides each company's stored max_contacts_per_run for this run only.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-brand-muted mb-1">Restrict to</label>
+        <select id="boost-restrict-to" class="w-full border border-brand-border rounded px-2 py-1.5 text-sm">
+          <option value="all">All active companies</option>
+          <option value="country_companies">Companies whose HQ matches the country</option>
+        </select>
+      </div>
+      <p id="boost-estimate" class="text-xs text-brand-muted">Estimated credits: —</p>
+    </div>
+
+    <div class="flex justify-end space-x-2 mt-5">
+      <button type="button" onclick="closeBoostModal()"
+              class="px-3 py-1.5 text-sm border border-brand-border rounded">Cancel</button>
+      <button onclick="runBoost()"
+              class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">
+        Run boost
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BOOST_ACTIVE_COMPANIES = {{ active_company_count }};
+
+function openBoostModal(prefillCountry) {
+  document.getElementById('boost-country').value = prefillCountry || '';
+  document.getElementById('boost-cap').value = '10';
+  document.getElementById('boost-restrict-to').value = 'all';
+  updateBoostEstimate();
+  document.getElementById('boost-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('boost-country').focus(), 0);
+}
+
+function closeBoostModal() {
+  document.getElementById('boost-modal').classList.add('hidden');
+}
+
+function updateBoostEstimate() {
+  const cap = parseInt(document.getElementById('boost-cap').value || '10', 10);
+  const restrict = document.getElementById('boost-restrict-to').value;
+  // Soft estimate: active_companies × cap × 0.5 (rough email-find rate).
+  // If restrict=country_companies we can't easily count from the client;
+  // just show the upper bound and label it as a max.
+  const est = Math.round(BOOST_ACTIVE_COMPANIES * cap * 0.5 / 10) * 10;
+  const label = restrict === 'all'
+    ? '~' + est + ' (across ' + BOOST_ACTIVE_COMPANIES + ' active companies)'
+    : 'up to ~' + est + ' (filtered to HQ in country)';
+  document.getElementById('boost-estimate').textContent = 'Estimated credits: ' + label;
+}
+
+document.getElementById('boost-cap').addEventListener('input', updateBoostEstimate);
+document.getElementById('boost-restrict-to').addEventListener('change', updateBoostEstimate);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeBoostModal();
+});
+
+async function runBoost() {
+  const country = document.getElementById('boost-country').value.trim();
+  const cap = document.getElementById('boost-cap').value;
+  const restrict = document.getElementById('boost-restrict-to').value;
+  if (!country) {
+    alert('Pick a country first.');
+    return;
+  }
+  if (!window.confirm(
+        'Run a boost for ' + country + ' (cap ' + cap + ' per company)?\n\n' +
+        'This will hit Apollo and consume credits.'
+      )) return;
+  closeBoostModal();
+  // Reuse the existing live-progress modal — same poll-based UX as Run.
+  const body = new URLSearchParams();
+  body.append('country', country);
+  if (cap) body.append('cap_override', cap);
+  if (restrict) body.append('restrict_to', restrict);
+  // We don't go through runEnrichmentWithProgress here because that hits
+  // /admin/triggers/enrichment (not the boost endpoint). Direct fetch instead.
+  try {
+    const resp = await fetch('/admin/triggers/enrichment-boost', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    alert(
+      'Boost run complete.\n\n' +
+      data.new_leads_created + ' new leads, ' +
+      data.contacts_enriched + ' enriched, ' +
+      data.credits_consumed + ' credits consumed.' +
+      (data.halted_by_budget ? '\n\nHalted by monthly credit budget.' : '') +
+      (data.error_count ? '\n\n' + data.error_count + ' error(s) — see /admin/runs.' : '')
+    );
+    location.reload();
+  } catch (e) {
+    alert('Boost failed: ' + e.message);
+  }
 }
 </script>
 

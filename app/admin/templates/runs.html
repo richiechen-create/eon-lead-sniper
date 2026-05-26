@@ -35,7 +35,15 @@
     <tbody>
       {% for r in enrichment_runs %}
       <tr class="border-t border-gray-100 align-top">
-        <td class="px-3 py-2 font-mono text-xs">{{ r.run_started_at.strftime('%Y-%m-%d %H:%M') if r.run_started_at else '—' }}</td>
+        <td class="px-3 py-2 font-mono text-xs">
+          {{ r.run_started_at.strftime('%Y-%m-%d %H:%M') if r.run_started_at else '—' }}
+          {% if r.run_metadata and r.run_metadata.get('boost_country') %}
+            <span class="ml-2 inline-block bg-brand-crimson-50 text-brand-crimson text-xs px-1.5 py-0.5 rounded">
+              boost: {{ r.run_metadata.boost_country }}
+              {%- if r.run_metadata.get('cap_override') %}, cap {{ r.run_metadata.cap_override }}{% endif -%}
+            </span>
+          {% endif %}
+        </td>
         <td class="px-3 py-2 font-mono text-xs">{{ r.run_completed_at.strftime('%Y-%m-%d %H:%M') if r.run_completed_at else '—' }}</td>
         <td class="px-3 py-2 text-right font-mono">{{ r.companies_processed or 0 }}</td>
         <td class="px-3 py-2 text-right font-mono">{{ r.candidates_found or 0 }}</td>

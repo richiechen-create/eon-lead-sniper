@@ -125,6 +125,31 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
             label = (industry or "").strip() or "(no segment)"
             segments.append({"label": label, "count": int(count)})
 
+        # Country coverage — last 30 days by person_country.
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        country_coverage_rows = list(
+            session.execute(
+                select(Lead.person_country, func.count(Lead.id))
+                .where(Lead.date_discovered >= thirty_days_ago)
+                .where(Lead.person_country.is_not(None))
+                .group_by(Lead.person_country)
+                .order_by(func.count(Lead.id).desc())
+            ).all()
+        )
+        country_coverage_total_countries = len(country_coverage_rows)
+        country_coverage = [
+            {"country": c, "count": int(n)} for c, n in country_coverage_rows[:8]
+        ]
+        country_coverage_max = max((r["count"] for r in country_coverage), default=1)
+
+        # For the Boost modal's credit estimate.
+        active_company_count = int(
+            session.execute(
+                select(func.count(Company.id)).where(Company.is_active == True)  # noqa: E712
+            ).scalar_one()
+            or 0
+        )
+
         # Active reps with at least one pending+deliverable lead — for the
         # test-digest rep picker dropdown. Deliverable means email OR
         # linkedin_url (same filter as the digest scheduler).
@@ -174,4 +199,8 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
         drift_examples=drift["bad_countries"][:5],
         segments=segments,
         test_digest_reps=test_digest_reps,
+        country_coverage=country_coverage,
+        country_coverage_max=country_coverage_max,
+        country_coverage_total_countries=country_coverage_total_countries,
+        active_company_count=active_company_count,
     )

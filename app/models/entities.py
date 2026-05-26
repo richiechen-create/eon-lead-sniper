@@ -187,6 +187,10 @@ class EnrichmentRun(Base):
     contacts_enriched: Mapped[int] = mapped_column(Integer, default=0)
     credits_consumed: Mapped[int] = mapped_column(Integer, default=0)
     errors: Mapped[list] = mapped_column(JSON, default=list)
+    # Free-form sidecar for run context (e.g. boost runs tag this with
+    # {"boost_country": "India", "cap_override": 10}).
+    # Named `run_metadata` because `metadata` is reserved by SQLAlchemy's Base.
+    run_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class DigestRun(Base):
