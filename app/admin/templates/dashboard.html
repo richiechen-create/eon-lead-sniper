@@ -187,17 +187,8 @@ async function triggerEnrichment() {
         'Run enrichment for ' + label + '?\n\n' +
         'This will hit Apollo and consume credits.'
       )) return;
-  let url = '/admin/triggers/enrichment';
-  if (scope) url += '?industry=' + encodeURIComponent(scope);
-  try {
-    const resp = await fetch(url, { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || 'Failed');
-    alert('Done.\n\n' + JSON.stringify(data, null, 2));
-    location.reload();
-  } catch (e) {
-    alert('Error: ' + e.message);
-  }
+  await window.runEnrichmentWithProgress(scope || null, label);
+  location.reload();
 }
 
 async function triggerTestDigest() {

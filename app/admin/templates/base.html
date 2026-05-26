@@ -118,6 +118,189 @@
     {% block content %}{% endblock %}
   </main>
 
+  <!-- Enrichment progress modal (shared across pages) -->
+  <div id="enrichment-progress-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 id="ep-title" class="text-lg font-semibold text-brand-ink">Running enrichment…</h2>
+        <button id="ep-close-x" class="text-brand-muted hover:text-brand-ink text-2xl leading-none hidden">&times;</button>
+      </div>
+      <p id="ep-scope" class="text-xs text-brand-muted mb-4">Scope: all segments</p>
+
+      <div class="flex items-center justify-center mb-4">
+        <svg id="ep-spinner" class="animate-spin h-8 w-8 text-brand-crimson" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4zm2 5.3A8 8 0 014 12H0c0 3.1 1.1 5.9 3 8.1l3-2.8z"></path>
+        </svg>
+      </div>
+
+      <div class="mb-2">
+        <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+          <div id="ep-bar" class="h-2 bg-brand-crimson transition-all" style="width: 0%"></div>
+        </div>
+        <p id="ep-progress" class="text-xs text-brand-muted mt-1 text-center">Starting...</p>
+      </div>
+
+      <dl class="grid grid-cols-3 gap-2 text-center mt-4 mb-4">
+        <div class="bg-brand-navy-50 rounded p-2">
+          <dt class="text-xs text-brand-muted uppercase tracking-wider">Leads</dt>
+          <dd id="ep-leads" class="text-xl font-semibold text-brand-ink mt-0.5">0</dd>
+        </div>
+        <div class="bg-brand-navy-50 rounded p-2">
+          <dt class="text-xs text-brand-muted uppercase tracking-wider">Enriched</dt>
+          <dd id="ep-enriched" class="text-xl font-semibold text-brand-ink mt-0.5">0</dd>
+        </div>
+        <div class="bg-brand-navy-50 rounded p-2">
+          <dt class="text-xs text-brand-muted uppercase tracking-wider">Credits</dt>
+          <dd id="ep-credits" class="text-xl font-semibold text-brand-ink mt-0.5">0</dd>
+        </div>
+      </dl>
+
+      <p id="ep-elapsed" class="text-xs text-brand-muted text-center">Elapsed: 0s</p>
+      <p id="ep-hint" class="text-xs text-brand-muted text-center mt-2">
+        Don't close this tab — the run is still going.
+      </p>
+
+      <div id="ep-actions" class="flex justify-end mt-4 hidden">
+        <button id="ep-close" class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Shared helper: kick off an enrichment run with a live progress modal.
+    // Pass `industry` (string or null) to scope the run; pass `scopeLabel` for the
+    // modal subtitle. Returns a promise that resolves with the final result dict.
+    window.runEnrichmentWithProgress = async function(industry, scopeLabel) {
+      const modal = document.getElementById('enrichment-progress-modal');
+      const title = document.getElementById('ep-title');
+      const scope = document.getElementById('ep-scope');
+      const spinner = document.getElementById('ep-spinner');
+      const bar = document.getElementById('ep-bar');
+      const progress = document.getElementById('ep-progress');
+      const leadsEl = document.getElementById('ep-leads');
+      const enrichedEl = document.getElementById('ep-enriched');
+      const creditsEl = document.getElementById('ep-credits');
+      const elapsedEl = document.getElementById('ep-elapsed');
+      const hint = document.getElementById('ep-hint');
+      const actions = document.getElementById('ep-actions');
+      const closeBtn = document.getElementById('ep-close');
+      const closeX = document.getElementById('ep-close-x');
+
+      // Reset
+      title.textContent = 'Running enrichment…';
+      scope.textContent = 'Scope: ' + (scopeLabel || 'all segments');
+      bar.style.width = '0%';
+      progress.textContent = 'Starting...';
+      leadsEl.textContent = '0';
+      enrichedEl.textContent = '0';
+      creditsEl.textContent = '0';
+      elapsedEl.textContent = 'Elapsed: 0s';
+      hint.classList.remove('hidden');
+      actions.classList.add('hidden');
+      spinner.classList.remove('hidden');
+      closeX.classList.add('hidden');
+      modal.classList.remove('hidden');
+
+      const startedAt = Date.now();
+      let finished = false;
+
+      // Initial baseline: capture the most-recent run BEFORE we trigger, so we
+      // know which run row to watch (anything started after `startedAt` epoch).
+      let baselineRunId = null;
+      try {
+        const baseResp = await fetch('/admin/triggers/enrichment/status' + (industry ? '?industry=' + encodeURIComponent(industry) : ''));
+        if (baseResp.ok) {
+          const d = await baseResp.json();
+          if (d.run) baselineRunId = d.run.id;
+        }
+      } catch (e) {}
+
+      const elapsedTimer = setInterval(() => {
+        if (finished) return;
+        const s = Math.floor((Date.now() - startedAt) / 1000);
+        const mins = Math.floor(s / 60);
+        const secs = s % 60;
+        elapsedEl.textContent = 'Elapsed: ' + (mins > 0 ? mins + 'm ' : '') + secs + 's';
+      }, 1000);
+
+      const pollTimer = setInterval(async () => {
+        if (finished) return;
+        try {
+          const url = '/admin/triggers/enrichment/status' + (industry ? '?industry=' + encodeURIComponent(industry) : '');
+          const resp = await fetch(url);
+          if (!resp.ok) return;
+          const d = await resp.json();
+          if (!d.run) return;
+          // Ignore the run if it's the same one we saw before triggering — wait
+          // for a new one to start.
+          if (d.run.id === baselineRunId && d.run.completed_at !== null) return;
+          const total = d.total_active_companies || 0;
+          const done = d.run.companies_processed || 0;
+          const pct = total > 0 ? Math.min(100, Math.round(100 * done / total)) : 0;
+          bar.style.width = pct + '%';
+          progress.textContent = total > 0
+            ? done + ' / ' + total + ' companies'
+            : done + ' companies processed';
+          leadsEl.textContent = d.run.new_leads_created;
+          enrichedEl.textContent = d.run.contacts_enriched;
+          creditsEl.textContent = d.run.credits_consumed;
+        } catch (e) {}
+      }, 2000);
+
+      let result = null;
+      let errorMsg = null;
+      try {
+        let url = '/admin/triggers/enrichment';
+        if (industry) url += '?industry=' + encodeURIComponent(industry);
+        const resp = await fetch(url, { method: 'POST' });
+        result = await resp.json();
+        if (!resp.ok) errorMsg = result.detail || 'Request failed';
+      } catch (e) {
+        errorMsg = e.message;
+      }
+
+      finished = true;
+      clearInterval(elapsedTimer);
+      clearInterval(pollTimer);
+
+      spinner.classList.add('hidden');
+      hint.classList.add('hidden');
+      closeX.classList.remove('hidden');
+      actions.classList.remove('hidden');
+
+      if (errorMsg) {
+        title.textContent = 'Run failed';
+        progress.textContent = errorMsg;
+      } else {
+        title.textContent = 'Run complete';
+        const pct = 100;
+        bar.style.width = pct + '%';
+        progress.textContent = (result.companies_processed || 0) + ' companies processed';
+        leadsEl.textContent = result.new_leads_created || 0;
+        enrichedEl.textContent = result.contacts_enriched || 0;
+        creditsEl.textContent = result.credits_consumed || 0;
+        if (result.halted_by_budget) {
+          progress.textContent += ' · halted by monthly credit budget';
+        }
+        if (result.error_count > 0) {
+          progress.textContent += ' · ' + result.error_count + ' error(s)';
+        }
+      }
+
+      return new Promise(resolve => {
+        function close() {
+          modal.classList.add('hidden');
+          closeBtn.removeEventListener('click', close);
+          closeX.removeEventListener('click', close);
+          resolve(result);
+        }
+        closeBtn.addEventListener('click', close);
+        closeX.addEventListener('click', close);
+      });
+    };
+  </script>
+
   {% if canonical_countries %}
   <datalist id="canonical-countries">
     {% for c in canonical_countries %}<option value="{{ c }}">{% endfor %}

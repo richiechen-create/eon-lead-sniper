@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.admin.auth import require_admin
 from app.config import get_settings
@@ -11,7 +11,7 @@ from app.digest.admin_summary import send_admin_summary
 from app.digest.builder import build_digest
 from app.digest.scheduler import _pending_leads_for_rep, run_digest_tick
 from app.email.sender import Attachment, send_email
-from app.models import Rep
+from app.models import Company, EnrichmentRun, Rep
 from app.tasks.enrichment import run_enrichment
 
 router = APIRouter(prefix="/triggers")
@@ -176,3 +176,56 @@ def trigger_test_digest(
         "preview_rep": preview_rep_email,
         "leads": lead_count,
     }
+
+
+@router.get("/enrichment/status")
+def enrichment_status(
+    industry: Optional[str] = None,
+    _user: str = Depends(require_admin),
+) -> dict:
+    """Snapshot of the most recent enrichment run for the live progress UI.
+
+    The orchestrator updates `companies_processed`, `new_leads_created`, and
+    `credits_consumed` on the run row inside its loop via `session.flush()`,
+    so polling this endpoint every 2-ish seconds gives a real-time view of
+    progress for an in-flight run.
+
+    `total_active_companies` is the denominator for an X / Y progress bar.
+    Optional `industry` filter mirrors the per-segment trigger.
+    """
+    with session_scope() as session:
+        latest = session.execute(
+            select(EnrichmentRun).order_by(EnrichmentRun.run_started_at.desc()).limit(1)
+        ).scalar_one_or_none()
+
+        total_stmt = select(func.count(Company.id)).where(Company.is_active == True)  # noqa: E712
+        if industry:
+            industries = [i.strip().lower() for i in industry.split(",") if i.strip()]
+            if industries:
+                total_stmt = total_stmt.where(
+                    func.lower(func.trim(Company.industry)).in_(industries)
+                )
+        total_active = int(session.execute(total_stmt).scalar_one() or 0)
+
+        if latest is None:
+            return {
+                "in_progress": False,
+                "total_active_companies": total_active,
+                "run": None,
+            }
+
+        return {
+            "in_progress": latest.run_completed_at is None,
+            "total_active_companies": total_active,
+            "run": {
+                "id": str(latest.id),
+                "started_at": latest.run_started_at.isoformat() if latest.run_started_at else None,
+                "completed_at": latest.run_completed_at.isoformat() if latest.run_completed_at else None,
+                "companies_processed": latest.companies_processed or 0,
+                "new_leads_created": latest.new_leads_created or 0,
+                "contacts_enriched": latest.contacts_enriched or 0,
+                "candidates_found": latest.candidates_found or 0,
+                "credits_consumed": latest.credits_consumed or 0,
+                "errors_count": len(latest.errors or []),
+            },
+        }
