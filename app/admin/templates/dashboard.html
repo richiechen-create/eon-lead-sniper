@@ -60,6 +60,10 @@
               class="w-full bg-brand-navy text-white text-sm py-2 rounded hover:bg-brand-navy-700 font-medium">
         Send digests now (force)
       </button>
+      <button onclick="confirmAndRun('/admin/triggers/reroute-pending', 'Re-run the routing cascade for every pending lead? Useful after changing routing rules so existing leads pick up the new assignments. Manual reassignments (company_override) are preserved.', this)"
+              class="w-full bg-white border border-brand-border text-brand-ink text-sm py-2 rounded hover:bg-brand-navy-50 font-medium">
+        Re-route pending leads
+      </button>
       <div>
         <label class="block text-xs font-medium text-brand-muted mb-1">Send test digest to me</label>
         <div class="flex gap-2">

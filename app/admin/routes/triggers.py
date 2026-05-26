@@ -11,7 +11,8 @@ from app.digest.admin_summary import send_admin_summary
 from app.digest.builder import build_digest
 from app.digest.scheduler import _pending_leads_for_rep, run_digest_tick
 from app.email.sender import Attachment, send_email
-from app.models import Company, EnrichmentRun, Rep
+from app.models import Company, EnrichmentRun, Lead, Rep
+from app.routing import route_lead
 from app.tasks.enrichment import run_enrichment
 
 router = APIRouter(prefix="/triggers")
@@ -186,6 +187,52 @@ def trigger_test_digest(
         "sent_to": to_email,
         "preview_rep": preview_rep_email,
         "leads": lead_count,
+    }
+
+
+@router.post("/reroute-pending")
+def reroute_pending_leads(_user: str = Depends(require_admin)) -> dict:
+    """Re-run the routing cascade for every pending lead and update its rep.
+
+    Preserves manual reassignments: leads with `routing_status='company_override'`
+    are skipped, so the operator's hand-picked overrides aren't undone.
+
+    Returns counts of total considered, updated (rep actually changed), and
+    unchanged (already routing to the correct rep).
+    """
+    considered = 0
+    updated = 0
+    unchanged = 0
+    with session_scope() as session:
+        leads = list(
+            session.execute(
+                select(Lead)
+                .where(Lead.delivery_status == "pending")
+                .where(Lead.routing_status.in_(["rule_matched", "fallback"]))
+            ).scalars()
+        )
+        for lead in leads:
+            considered += 1
+            company = lead.company
+            if company is None:
+                continue
+            decision = route_lead(session, company, lead_country=lead.person_country)
+            if (
+                decision.assigned_rep_email == lead.assigned_rep_email
+                and decision.routing_status == lead.routing_status
+            ):
+                unchanged += 1
+                continue
+            lead.assigned_rep_email = decision.assigned_rep_email
+            lead.assigned_rep_name = decision.assigned_rep_name
+            lead.routing_rule_id = decision.routing_rule_id
+            lead.routing_status = decision.routing_status
+            updated += 1
+    return {
+        "considered": considered,
+        "updated": updated,
+        "unchanged": unchanged,
+        "skipped_company_override": "company_override leads were preserved",
     }
 
 
