@@ -45,9 +45,19 @@ def trigger_enrichment(
 
 
 @router.post("/digest")
-def trigger_digest(send_admin: bool = False, _user: str = Depends(require_admin)) -> dict:
+def trigger_digest(
+    send_admin: bool = False,
+    force: bool = False,
+    _user: str = Depends(require_admin),
+) -> dict:
+    """Run a digest tick.
+
+    `force=true` ignores the 08:00-local-time + weekday gate and sends to
+    every active rep with pending+deliverable leads — used by the dashboard's
+    manual button. Default (False) honors the schedule, same as cron.
+    """
     with session_scope() as session:
-        run = run_digest_tick(session)
+        run = run_digest_tick(session, force=force)
         if send_admin:
             send_admin_summary(session)
     return {
@@ -55,6 +65,7 @@ def trigger_digest(send_admin: bool = False, _user: str = Depends(require_admin)
         "reps_emailed": run.reps_emailed,
         "total_leads_delivered": run.total_leads_delivered,
         "errors": run.errors or [],
+        "forced": force,
     }
 
 

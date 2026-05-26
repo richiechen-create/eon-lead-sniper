@@ -56,9 +56,9 @@
           </button>
         </div>
       </div>
-      <button onclick="confirmAndRun('/admin/triggers/digest', 'Run a digest tick now? Reps whose local time is 08:00 will receive emails.', this)"
+      <button onclick="confirmAndRun('/admin/triggers/digest?force=true', 'Send digests to ALL active reps with pending leads RIGHT NOW (ignores the 08:00-local-time gate)? This is a manual override — leads will be marked delivered and won''t appear in the scheduled morning digest.', this)"
               class="w-full bg-brand-navy text-white text-sm py-2 rounded hover:bg-brand-navy-700 font-medium">
-        Run digest now
+        Send digests now (force)
       </button>
       <div>
         <label class="block text-xs font-medium text-brand-muted mb-1">Send test digest to me</label>

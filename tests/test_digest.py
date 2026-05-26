@@ -123,6 +123,45 @@ def test_scheduler_respects_daily_lead_cap(session, monkeypatch):
     assert pending == 1
 
 
+def test_force_sends_outside_8am_and_weekday(session, monkeypatch):
+    """force=True bypasses the local-hour + weekday gates."""
+    rep = Rep(email="ny@x.com", name="NY", timezone="America/New_York", daily_lead_cap=10)
+    session.add(rep)
+    session.flush()
+    company = _seed_company(session)
+    _make_lead(session, company, rep_email="ny@x.com", apollo_person_id="f1", email="x@x.com")
+
+    sent = []
+    monkeypatch.setattr("app.digest.scheduler.send_email", lambda **k: sent.append(k) or {"ok": True})
+
+    # Sunday 03:00 UTC — usually skipped (weekend + wrong hour).
+    now_utc = datetime(2026, 5, 24, 3, 0)
+    run_without_force = run_digest_tick(session, now_utc=now_utc, force=False)
+    assert run_without_force.reps_emailed == 0
+    assert sent == []
+
+    run_with_force = run_digest_tick(session, now_utc=now_utc, force=True)
+    assert run_with_force.reps_emailed == 1
+    assert run_with_force.total_leads_delivered == 1
+    assert len(sent) == 1
+
+
+def test_force_still_skips_inactive_reps(session, monkeypatch):
+    rep = Rep(email="off@x.com", name="Off", timezone="UTC", is_active=False)
+    session.add(rep)
+    session.flush()
+    company = _seed_company(session)
+    _make_lead(session, company, rep_email="off@x.com", apollo_person_id="g1")
+
+    sent = []
+    monkeypatch.setattr("app.digest.scheduler.send_email", lambda **k: sent.append(k) or {"ok": True})
+
+    now_utc = datetime(2026, 5, 20, 12, 0)
+    run = run_digest_tick(session, now_utc=now_utc, force=True)
+    assert run.reps_emailed == 0
+    assert sent == []
+
+
 def test_weekend_skipped(session, monkeypatch):
     rep = Rep(email="wk@x.com", name="W", timezone="America/New_York")
     session.add(rep)

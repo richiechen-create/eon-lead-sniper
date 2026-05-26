@@ -31,9 +31,16 @@ def _local_now(tz_name: str, now_utc: datetime) -> datetime:
     return now_utc.replace(tzinfo=timezone.utc).astimezone(tz)
 
 
-def _is_eligible(rep: Rep, now_utc: datetime) -> Optional[datetime]:
-    """Return the rep's local datetime if it's a weekday and the local hour is 8, else None."""
+def _is_eligible(rep: Rep, now_utc: datetime, *, force: bool = False) -> Optional[datetime]:
+    """Return the rep's local datetime if it's a weekday and the local hour is 8, else None.
+
+    When `force=True`, the weekday + 8AM checks are skipped — every active rep
+    is treated as eligible. Used for the dashboard's manual "Run digest now"
+    button so the operator doesn't need to wait for the scheduled tick.
+    """
     local = _local_now(rep.timezone or "UTC", now_utc)
+    if force:
+        return local
     if local.weekday() >= 5:  # Sat=5, Sun=6
         return None
     if local.hour != 8:
@@ -79,7 +86,18 @@ def _send_digest(digest: BuiltDigest) -> None:
     )
 
 
-def run_digest_tick(session: Session, now_utc: Optional[datetime] = None) -> DigestRun:
+def run_digest_tick(
+    session: Session,
+    now_utc: Optional[datetime] = None,
+    *,
+    force: bool = False,
+) -> DigestRun:
+    """Hourly digest dispatch.
+
+    `force=True` sends to every active rep with pending+deliverable leads,
+    ignoring local-hour and weekday gates. Used by the dashboard's manual
+    button — cron scripts always use the default (force=False).
+    """
     now_utc = now_utc or datetime.utcnow()
     run = DigestRun(run_date=now_utc.date(), errors=[])
     session.add(run)
@@ -93,7 +111,7 @@ def run_digest_tick(session: Session, now_utc: Optional[datetime] = None) -> Dig
     total_delivered = 0
 
     for rep in reps:
-        local = _is_eligible(rep, now_utc)
+        local = _is_eligible(rep, now_utc, force=force)
         if local is None:
             continue
         try:
