@@ -28,9 +28,15 @@ class RoutingDecision:
 def _matches(conditions: dict, company: Company, lead_country: Optional[str] = None) -> bool:
     """All present condition keys must match (AND). Unknown keys are ignored.
 
+    Country precedence:
+      `lead_country`, when set on the rule, takes precedence over
+      `company_country`. If both keys are present we only evaluate
+      `lead_country` — the lead's personal country is what we care about.
+      `company_country` is checked only when `lead_country` is absent from
+      the rule (legacy / pure-segment rules).
+
     `lead_country` is the person's country from Apollo (lead.person_country).
-    It's distinct from `company_country` (the company's HQ). A rule may use
-    either, both, or neither.
+    `company_country` is the company's HQ from the Companies page.
     """
     if not isinstance(conditions, dict):
         return False
@@ -38,7 +44,12 @@ def _matches(conditions: dict, company: Company, lead_country: Optional[str] = N
         allowed = [str(x).strip().lower() for x in (conditions["company_industry"] or [])]
         if (company.industry or "").strip().lower() not in allowed:
             return False
-    if "company_country" in conditions:
+    if "lead_country" in conditions:
+        allowed = conditions["lead_country"] or []
+        if (lead_country or "") not in allowed:
+            return False
+        # lead_country took precedence — do NOT also require company_country.
+    elif "company_country" in conditions:
         allowed = conditions["company_country"] or []
         if (company.country or "") not in allowed:
             return False
@@ -49,10 +60,6 @@ def _matches(conditions: dict, company: Company, lead_country: Optional[str] = N
     if "company_domain" in conditions:
         allowed = conditions["company_domain"] or []
         if (company.domain or "") not in allowed:
-            return False
-    if "lead_country" in conditions:
-        allowed = conditions["lead_country"] or []
-        if (lead_country or "") not in allowed:
             return False
     return True
 

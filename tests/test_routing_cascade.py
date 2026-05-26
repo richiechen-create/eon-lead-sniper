@@ -194,26 +194,59 @@ def test_rule_with_lead_country_does_not_match_other_country(session):
     assert decision.routing_status == "fallback"
 
 
-def test_rule_with_both_company_and_lead_country_anded(session):
+def test_lead_country_takes_precedence_over_company_country(session):
+    """When both are set on a rule, lead_country wins; company_country is ignored.
+
+    This lets operators migrate from company_country to lead_country without
+    having to first delete the old company_country values. As long as the
+    lead's country matches lead_country, the rule fires — regardless of the
+    company's HQ.
+    """
     target = _seed_rep(session, "target@x.com", name="Target")
     _add_rule(
         session,
         priority=10,
-        name="UK lead at US company",
+        name="UK leads (ignore company HQ)",
         conditions={
-            "company_country": ["United States"],
+            "company_country": ["United States"],   # ignored when lead_country is set
             "lead_country": ["United Kingdom"],
         },
         email=target.email,
     )
-    # Both match -> rule fires
+
+    # Lead in UK at a US company -> matches (both criteria would have aligned)
     us_co = _seed_company(session, industry="x", country="United States")
     d = route_lead(session, us_co, lead_country="United Kingdom")
     assert d.assigned_rep_email == "target@x.com"
 
-    # Company country wrong -> falls through
+    # Lead in UK at a company in India -> STILL matches because lead_country
+    # takes precedence; company_country is suppressed by the precedence rule.
     in_co = _seed_company(session, industry="x", country="India", domain="other.com")
     d2 = route_lead(session, in_co, lead_country="United Kingdom")
+    assert d2.assigned_rep_email == "target@x.com"
+    assert d2.routing_status == "rule_matched"
+
+    # Lead NOT in UK -> lead_country fails its own check, rule doesn't fire.
+    d3 = route_lead(session, us_co, lead_country="France")
+    assert d3.routing_status == "fallback"
+
+
+def test_legacy_rule_with_only_company_country_still_works(session):
+    """When a rule has company_country but no lead_country, company_country is checked."""
+    rep = _seed_rep(session, "legacy@x.com", name="Legacy")
+    _add_rule(
+        session,
+        priority=10,
+        name="US-HQ companies",
+        conditions={"company_country": ["United States"]},
+        email=rep.email,
+    )
+    us_co = _seed_company(session, industry="x", country="United States")
+    d = route_lead(session, us_co, lead_country="Brazil")
+    assert d.assigned_rep_email == "legacy@x.com"
+
+    in_co = _seed_company(session, industry="x", country="India", domain="x2.com")
+    d2 = route_lead(session, in_co, lead_country="Brazil")
     assert d2.routing_status == "fallback"
 
 
