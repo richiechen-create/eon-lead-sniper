@@ -136,14 +136,25 @@ def run_digest_tick(
         if not leads:
             continue  # 0 leads after cap -> no email
 
-        digest = build_digest(rep.email, rep.name, leads, local)
+        # Build can raise (e.g. orphaned lead → company is None). Catch
+        # per-rep so one bad lead doesn't kill the whole tick / endpoint.
+        try:
+            digest = build_digest(rep.email, rep.name, leads, local)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("digest build failed for %s", rep.email)
+            run.errors = (run.errors or []) + [
+                {"rep": rep.email, "stage": "build", "error": str(exc)}
+            ]
+            continue
         if digest is None:
             continue
         try:
             _send_digest(digest)
         except Exception as exc:  # noqa: BLE001
             logger.exception("digest send failed for %s", rep.email)
-            run.errors = (run.errors or []) + [{"rep": rep.email, "error": str(exc)}]
+            run.errors = (run.errors or []) + [
+                {"rep": rep.email, "stage": "send", "error": str(exc)}
+            ]
             _safe_admin_alert(
                 subject=f"EON Bullseye: digest send failed for {rep.email}",
                 text=f"Failed to send digest for {rep.email}: {exc}",

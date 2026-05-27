@@ -133,18 +133,28 @@ def trigger_digest(
     `reps_emailed=0` with no error if the chosen rep has no pending leads
     or isn't active.
     """
-    with session_scope() as session:
-        run = run_digest_tick(session, force=force, only_rep=rep)
-        if send_admin:
-            send_admin_summary(session)
-    return {
-        "digest_run_id": str(run.id),
-        "reps_emailed": run.reps_emailed,
-        "total_leads_delivered": run.total_leads_delivered,
-        "errors": run.errors or [],
-        "forced": force,
-        "scoped_to_rep": rep,
-    }
+    import traceback as _tb
+    try:
+        with session_scope() as session:
+            run = run_digest_tick(session, force=force, only_rep=rep)
+            if send_admin:
+                send_admin_summary(session)
+        return {
+            "digest_run_id": str(run.id),
+            "reps_emailed": run.reps_emailed,
+            "total_leads_delivered": run.total_leads_delivered,
+            "errors": run.errors or [],
+            "forced": force,
+            "scoped_to_rep": rep,
+        }
+    except Exception as exc:  # noqa: BLE001
+        # Surface the real error to the operator instead of a plain-text 500.
+        # The stack trace still hits the Render log via FastAPI's default
+        # handler — we just give the UI something useful to show.
+        raise HTTPException(
+            status_code=500,
+            detail=f"{type(exc).__name__}: {exc}\n\n{_tb.format_exc(limit=4)}",
+        ) from exc
 
 
 @router.post("/test-digest")

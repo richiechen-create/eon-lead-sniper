@@ -438,7 +438,6 @@ async function triggerEnrichment() {
 
 async function triggerDigestSend() {
   const rep = document.getElementById('digest-send-rep').value;
-  const who = rep ? rep : 'ALL active reps with pending leads';
   const msg = rep
     ? `Send ${rep}'s digest RIGHT NOW (ignores the 08:00-local-time gate)?\n\nTheir pending leads will be marked delivered.`
     : `Send digests to ALL active reps with pending leads RIGHT NOW (ignores the 08:00-local-time gate)?\n\nThis is a manual override — leads will be marked delivered and will not appear in the scheduled morning digest.`;
@@ -447,8 +446,11 @@ async function triggerDigestSend() {
   if (rep) url += '&rep=' + encodeURIComponent(rep);
   try {
     const resp = await fetch(url, { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    // Robust parse: server might return plain-text 500 instead of JSON.
+    const raw = await resp.text();
+    let data;
+    try { data = JSON.parse(raw); } catch { data = { detail: raw }; }
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
     alert('Done.\n\n' + JSON.stringify(data, null, 2));
     location.reload();
   } catch (e) {

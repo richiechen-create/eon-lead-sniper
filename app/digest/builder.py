@@ -30,11 +30,15 @@ def _group_leads_by_company(leads: list[Lead]) -> list[CompanyGroup]:
     groups: dict[str, CompanyGroup] = {}
     for lead in leads:
         company = lead.company
-        key = (company.company_name or "").lower()
+        # Tolerate dangling FK — slot orphaned leads under a placeholder
+        # group so the digest still sends.
+        company_name = (company.company_name if company else "") or "(unknown company)"
+        company_domain = (company.domain if company else "") or ""
+        key = company_name.lower()
         if key not in groups:
             groups[key] = CompanyGroup(
-                company_name=company.company_name or company.domain,
-                domain=company.domain,
+                company_name=company_name,
+                domain=company_domain,
                 leads=[],
             )
         groups[key].leads.append(lead)
@@ -146,14 +150,20 @@ def _build_csv(leads: list[Lead]) -> bytes:
             parts = lead.full_name.strip().split(None, 1)
             first = parts[0] if parts else ""
             last = parts[1] if len(parts) > 1 else ""
+        # Defensive: a lead can have a dangling company FK (e.g. a company row
+        # was deleted directly via SQL). Don't 500 the whole digest — emit a
+        # placeholder so the rep still gets the row, and they can ask Richie
+        # to clean it up.
+        company_name = (company.company_name if company else "") or ""
+        company_domain = (company.domain if company else "") or ""
         # Segment = the company's industry. Title-case it for the rep's eye —
         # we store it lowercased internally for dedupe, but reps don't need to
         # see "oil and gas"; "Oil And Gas" reads better in a spreadsheet.
-        segment = (company.industry or "").title()
+        segment = ((company.industry if company else "") or "").title()
         writer.writerow(
             [
-                company.company_name or "",
-                company.domain or "",
+                company_name,
+                company_domain,
                 segment,
                 first,
                 last,
