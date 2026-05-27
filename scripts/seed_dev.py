@@ -82,14 +82,25 @@ def _seed_leads() -> None:
 
     sample_leads = [
         # rep_email, company_domain, first, last, title, country, status, routing
-        ("dan@eonreality.com",                 "exxonmobil.com", "Sarah",   "Chen",     "VP Learning & Development",      "United States", "pending",   "fallback"),
-        ("dan@eonreality.com",                 "shell.com",      "Marcus",  "Weber",    "EHS Director",                   "Netherlands",   "pending",   "fallback"),
-        ("dan@eonreality.com",                 "bp.com",         "Priya",   "Sharma",   "Head of Safety Training",        "India",         "pending",   "fallback"),
-        ("sales_us@eonreality.com",            "chevron.com",    "James",   "O'Brien",  "Senior L&D Manager",             "United States", "pending",   "rule_matched"),
-        ("sales_us@eonreality.com",            "exxonmobil.com", "Aisha",   "Patel",    "Director of EHS",                "United States", "delivered", "rule_matched"),
-        ("leadgen_mfg_americas@eonreality.com","ge.com",         "Carlos",  "Mendez",   "VP Training",                    "Brazil",        "pending",   "rule_matched"),
-        ("leadgen_mfg_americas@eonreality.com","boeing.com",     "Yuki",    "Tanaka",   "Director Talent Development",    "Japan",         "delivered", "rule_matched"),
-        ("leadgen_mfg_americas@eonreality.com","siemens.com",    "Elena",   "Volkov",   "Chief Learning Officer",         "Germany",       "skipped",   "rule_matched"),
+        ("dan@eonreality.com",                 "exxonmobil.com", "Sarah",   "Chen",     "VP Learning & Development",      "United States",  "pending",   "fallback"),
+        ("dan@eonreality.com",                 "shell.com",      "Marcus",  "Weber",    "EHS Director",                   "Netherlands",    "pending",   "fallback"),
+        ("dan@eonreality.com",                 "bp.com",         "Priya",   "Sharma",   "Head of Safety Training",        "India",          "pending",   "fallback"),
+        ("sales_us@eonreality.com",            "chevron.com",    "James",   "O'Brien",  "Senior L&D Manager",             "United States",  "pending",   "rule_matched"),
+        ("sales_us@eonreality.com",            "exxonmobil.com", "Aisha",   "Patel",    "Director of EHS",                "United States",  "delivered", "rule_matched"),
+        ("leadgen_mfg_americas@eonreality.com","ge.com",         "Carlos",  "Mendez",   "VP Training",                    "Brazil",         "pending",   "rule_matched"),
+        ("leadgen_mfg_americas@eonreality.com","boeing.com",     "Yuki",    "Tanaka",   "Director Talent Development",    "Japan",          "delivered", "rule_matched"),
+        ("leadgen_mfg_americas@eonreality.com","siemens.com",    "Elena",   "Volkov",   "Chief Learning Officer",         "Germany",        "skipped",   "rule_matched"),
+        # Extra countries so the "Lead coverage by country" widget shows the
+        # top-8 bars plus the expandable "show all (lowest first)" list.
+        ("dan@eonreality.com",                 "shell.com",      "Liam",    "Murphy",   "L&D Manager",                    "United Kingdom", "pending",   "rule_matched"),
+        ("dan@eonreality.com",                 "bp.com",         "Anika",   "Rao",      "Safety Lead",                    "Singapore",      "pending",   "rule_matched"),
+        ("dan@eonreality.com",                 "shell.com",      "Tomas",   "Larsen",   "Training Director",              "Norway",         "pending",   "rule_matched"),
+        ("dan@eonreality.com",                 "exxonmobil.com", "Mei",     "Wong",     "Senior L&D",                     "Malaysia",       "pending",   "rule_matched"),
+        ("dan@eonreality.com",                 "chevron.com",    "Oluwa",   "Adebayo",  "EHS Manager",                    "Nigeria",        "pending",   "rule_matched"),
+        ("dan@eonreality.com",                 "shell.com",      "Andre",   "Botha",    "Head of Safety",                 "South Africa",   "pending",   "rule_matched"),
+        ("dan@eonreality.com",                 "bp.com",         "Camila",  "Rojas",    "L&D Lead",                       "Mexico",         "pending",   "rule_matched"),
+        ("dan@eonreality.com",                 "ge.com",         "Sofia",   "Marin",    "Training Specialist",            "Argentina",      "delivered", "rule_matched"),
+        ("dan@eonreality.com",                 "siemens.com",    "Pierre",  "Dubois",   "EHS Lead",                       "France",         "delivered", "rule_matched"),
     ]
 
     with session_scope() as session:

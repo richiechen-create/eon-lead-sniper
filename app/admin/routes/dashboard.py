@@ -141,6 +141,13 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
             {"country": c, "count": int(n)} for c, n in country_coverage_rows[:8]
         ]
         country_coverage_max = max((r["count"] for r in country_coverage), default=1)
+        # Full list, lowest first — boost candidates surface at the top of
+        # the expanded view. We re-sort here (the SQL was DESC for the
+        # top-8 bars) so the operator can scan for underserved countries.
+        country_coverage_all = sorted(
+            [{"country": c, "count": int(n)} for c, n in country_coverage_rows],
+            key=lambda r: (r["count"], r["country"]),
+        )
 
         # For the Boost modal's credit estimate.
         active_company_count = int(
@@ -202,5 +209,6 @@ def dashboard_root(request: Request, _user: str = Depends(require_admin)):
         country_coverage=country_coverage,
         country_coverage_max=country_coverage_max,
         country_coverage_total_countries=country_coverage_total_countries,
+        country_coverage_all=country_coverage_all,
         active_company_count=active_company_count,
     )
