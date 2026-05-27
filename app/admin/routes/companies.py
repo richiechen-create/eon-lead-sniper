@@ -457,6 +457,127 @@ def companies_profile_toggle(
         return _render_profile_pills(request, session, company)
 
 
+@router.post("/segment-profiles/bulk")
+def companies_segment_profiles_bulk(
+    response: Response,
+    segment_key: str = Form(...),
+    profile_ids: list[str] = Form(...),
+    action: str = Form(...),  # "link" | "unlink"
+    _user: str = Depends(require_admin),
+):
+    """Bulk-attach or bulk-detach targeting profiles across every active
+    company in a segment. Replaces the manual CROSS JOIN SQL the operator
+    was running by hand for each segment-rollout.
+
+    `segment_key` is the lower-cased trimmed industry (e.g. 'healthcare'
+    or 'aerospace & defense') — same key the segments grid uses.
+    `profile_ids` is repeated for multi-select (HTML form arrays).
+    `action='link'` inserts missing pairs; `action='unlink'` deletes
+    existing pairs. Both are idempotent — running twice is a no-op.
+    """
+    from sqlalchemy import and_, delete, func
+
+    if action not in ("link", "unlink"):
+        raise HTTPException(400, "action must be 'link' or 'unlink'")
+    if not profile_ids:
+        raise HTTPException(400, "at least one profile_id is required")
+
+    seg_key = (segment_key or "").strip().lower()
+
+    with session_scope() as session:
+        # Find every active company in the segment.
+        company_rows = list(
+            session.execute(
+                select(Company.id).where(
+                    Company.is_active == True,  # noqa: E712
+                    func.lower(func.trim(Company.industry)) == seg_key,
+                )
+            ).all()
+        )
+        company_ids = [row[0] for row in company_rows]
+
+        # Validate profiles up front (drop unknowns / inactives silently).
+        valid_profiles = list(
+            session.execute(
+                select(TargetingProfile.id, TargetingProfile.name).where(
+                    TargetingProfile.id.in_(profile_ids),
+                    TargetingProfile.is_active == True,  # noqa: E712
+                )
+            ).all()
+        )
+        valid_profile_ids = [p[0] for p in valid_profiles]
+
+        if not company_ids or not valid_profile_ids:
+            response.headers["X-Toast"] = (
+                f"No-op: {len(company_ids)} companies, "
+                f"{len(valid_profile_ids)} valid profiles."
+            )
+            return {
+                "action": action,
+                "segment_key": seg_key,
+                "companies_count": len(company_ids),
+                "profiles_count": len(valid_profile_ids),
+                "links_changed": 0,
+            }
+
+        if action == "link":
+            # Pull existing pairs to skip — avoids fighting the PK constraint.
+            existing = set(
+                session.execute(
+                    select(
+                        CompanyTargeting.company_id,
+                        CompanyTargeting.targeting_profile_id,
+                    ).where(
+                        CompanyTargeting.company_id.in_(company_ids),
+                        CompanyTargeting.targeting_profile_id.in_(valid_profile_ids),
+                    )
+                ).all()
+            )
+            inserted = 0
+            for cid in company_ids:
+                for pid in valid_profile_ids:
+                    if (cid, pid) in existing:
+                        continue
+                    session.add(
+                        CompanyTargeting(company_id=cid, targeting_profile_id=pid)
+                    )
+                    inserted += 1
+            session.flush()
+            response.headers["X-Toast"] = (
+                f"Linked {inserted} new (company, profile) pairs across "
+                f"{len(company_ids)} {seg_key or '(no segment)'} companies."
+            )
+            return {
+                "action": "link",
+                "segment_key": seg_key,
+                "companies_count": len(company_ids),
+                "profiles_count": len(valid_profile_ids),
+                "links_changed": inserted,
+            }
+
+        # action == "unlink"
+        result = session.execute(
+            delete(CompanyTargeting).where(
+                and_(
+                    CompanyTargeting.company_id.in_(company_ids),
+                    CompanyTargeting.targeting_profile_id.in_(valid_profile_ids),
+                )
+            )
+        )
+        deleted = result.rowcount or 0
+        response.headers["X-Toast"] = (
+            f"Unlinked {deleted} (company, profile) pairs across "
+            f"{len(company_ids)} {seg_key or '(no segment)'} companies."
+        )
+        return {
+            "action": "unlink",
+            "segment_key": seg_key,
+            "companies_count": len(company_ids),
+            "profiles_count": len(valid_profile_ids),
+            "links_changed": deleted,
+        }
+
+
 @router.delete("/{company_id}/profiles/{profile_id}")
 def companies_profile_remove(
     company_id: str,

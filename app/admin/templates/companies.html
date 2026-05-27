@@ -32,11 +32,19 @@
         {% endif %}
         <span class="text-xs text-brand-muted">{{ seg.active_count }} active</span>
       </div>
-      <button type="button"
-              onclick="event.stopPropagation(); openAdd('{{ seg.label | replace("'", "\\'") }}', true)"
-              class="text-sm bg-brand-crimson text-white px-3 py-1 rounded hover:bg-brand-crimson-700 font-medium">
-        + Add company
-      </button>
+      <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+        <button type="button"
+                onclick="openBulkProfiles('{{ seg.key | replace("'", "\\'") }}', '{{ seg.label | replace("'", "\\'") }}', {{ seg.active_count }})"
+                class="text-sm bg-white border border-brand-border text-brand-ink px-3 py-1 rounded hover:bg-brand-navy-50 font-medium"
+                {% if seg.active_count == 0 %}disabled title="No active companies to apply to"{% endif %}>
+          Bulk profiles ▾
+        </button>
+        <button type="button"
+                onclick="openAdd('{{ seg.label | replace("'", "\\'") }}', true)"
+                class="text-sm bg-brand-crimson text-white px-3 py-1 rounded hover:bg-brand-crimson-700 font-medium">
+          + Add company
+        </button>
+      </div>
     </header>
 
     <div class="segment-body overflow-x-auto">
@@ -226,6 +234,42 @@
         <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Add</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Bulk profiles per segment modal -->
+<div id="bulk-profiles-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <h2 class="text-lg font-semibold text-brand-ink">Bulk profile assignment</h2>
+        <p class="text-xs text-brand-muted mt-1">
+          Apply or remove targeting profiles across <strong id="bulk-prof-segment-label">—</strong>
+          (<span id="bulk-prof-companies-count">0</span> active companies).
+        </p>
+      </div>
+      <button type="button" onclick="closeBulkProfiles()" class="text-brand-muted hover:text-brand-ink">✕</button>
+    </div>
+
+    <label class="block text-xs font-medium text-brand-muted mb-2">Profiles</label>
+    <div class="border border-brand-border rounded p-3 max-h-64 overflow-y-auto space-y-1.5">
+      {% for p in profiles %}
+        <label class="flex items-center gap-2 text-sm hover:bg-brand-navy-50 px-1 py-0.5 rounded cursor-pointer">
+          <input type="checkbox" class="bulk-prof-checkbox" value="{{ p.id }}" data-name="{{ p.name }}"/>
+          <span class="font-mono text-xs text-brand-ink">{{ p.name }}</span>
+        </label>
+      {% endfor %}
+    </div>
+    <p class="text-xs text-brand-muted mt-2">
+      <strong>Link</strong> adds the selected profile(s) to every active company in the segment (no-op for pairs that already exist).<br/>
+      <strong>Unlink</strong> removes them from every active company in the segment.
+    </p>
+
+    <div class="flex justify-end gap-2 mt-4">
+      <button type="button" onclick="closeBulkProfiles()" class="px-3 py-1.5 text-sm border border-brand-border rounded text-brand-ink hover:bg-brand-navy-50">Cancel</button>
+      <button type="button" onclick="runBulkProfiles('unlink')" class="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50">Unlink</button>
+      <button type="button" onclick="runBulkProfiles('link')" class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Link</button>
+    </div>
   </div>
 </div>
 
@@ -434,11 +478,60 @@ function closeAdd() { document.getElementById('add-modal').classList.add('hidden
 function openBulk() { document.getElementById('bulk-modal').classList.remove('hidden'); }
 function closeBulk() { document.getElementById('bulk-modal').classList.add('hidden'); }
 
+let _bulkProfSegmentKey = null;
+function openBulkProfiles(segKey, segLabel, activeCount) {
+  _bulkProfSegmentKey = segKey;
+  document.getElementById('bulk-prof-segment-label').textContent = segLabel;
+  document.getElementById('bulk-prof-companies-count').textContent = activeCount;
+  // Reset all checkboxes when opening
+  document.querySelectorAll('#bulk-profiles-modal .bulk-prof-checkbox').forEach(cb => { cb.checked = false; });
+  document.getElementById('bulk-profiles-modal').classList.remove('hidden');
+}
+function closeBulkProfiles() {
+  document.getElementById('bulk-profiles-modal').classList.add('hidden');
+  _bulkProfSegmentKey = null;
+}
+async function runBulkProfiles(action) {
+  if (!_bulkProfSegmentKey && _bulkProfSegmentKey !== '') return;
+  const checked = Array.from(
+    document.querySelectorAll('#bulk-profiles-modal .bulk-prof-checkbox:checked')
+  );
+  if (checked.length === 0) {
+    alert('Pick at least one profile.');
+    return;
+  }
+  const profileIds = checked.map(cb => cb.value);
+  const profileNames = checked.map(cb => cb.dataset.name).join(', ');
+  const segLabel = document.getElementById('bulk-prof-segment-label').textContent;
+  const count = document.getElementById('bulk-prof-companies-count').textContent;
+  const verb = action === 'link' ? 'Link' : 'Unlink';
+  if (!confirm(`${verb} [${profileNames}] ${action === 'link' ? 'to' : 'from'} all ${count} ${segLabel} companies?`)) return;
+
+  const fd = new FormData();
+  fd.append('segment_key', _bulkProfSegmentKey);
+  fd.append('action', action);
+  profileIds.forEach(id => fd.append('profile_ids', id));
+
+  try {
+    const resp = await fetch('/admin/companies/segment-profiles/bulk', { method: 'POST', body: fd });
+    const raw = await resp.text();
+    let data;
+    try { data = JSON.parse(raw); } catch { data = { detail: raw }; }
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    alert(`Done.\n\n${JSON.stringify(data, null, 2)}`);
+    closeBulkProfiles();
+    location.reload();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
 // Close modals on Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeAdd();
     closeBulk();
+    closeBulkProfiles();
     document.querySelectorAll('.profile-popover').forEach(p => p.classList.add('hidden'));
   }
 });

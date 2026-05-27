@@ -98,6 +98,89 @@ def test_companies_bulk_import(env):
     assert resp.json()["upserted"] == 2
 
 
+def test_bulk_segment_profile_link_and_unlink(env):
+    """Operator bulk-applies a targeting profile across every active company
+    in a segment, then bulk-removes it. Idempotent both ways."""
+    from app.models import Company, TargetingProfile
+
+    client, SessionLocal = env
+
+    # Seed 3 healthcare + 1 mining company, plus 1 profile.
+    with SessionLocal() as s:
+        prof = TargetingProfile(
+            name="ld_leadership",
+            titles=["VP Learning"],
+            seniorities=["vp"],
+            departments=[],
+            locations=[],
+            keywords=[],
+        )
+        s.add(prof)
+        s.flush()
+        prof_id = prof.id
+        for i in range(3):
+            s.add(Company(
+                company_name=f"Pharma{i}", domain=f"pharma{i}.com",
+                industry="healthcare", country="United States", is_active=True,
+            ))
+        s.add(Company(
+            company_name="MineCo", domain="mineco.com",
+            industry="mining", country="United States", is_active=True,
+        ))
+        s.commit()
+
+    # LINK ld_leadership across all 3 healthcare companies.
+    resp = client.post(
+        "/admin/companies/segment-profiles/bulk",
+        data={"segment_key": "healthcare", "action": "link", "profile_ids": [str(prof_id)]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["action"] == "link"
+    assert body["companies_count"] == 3
+    assert body["links_changed"] == 3
+
+    with SessionLocal() as s:
+        # Mining company should NOT have the link
+        mineco = s.query(Company).filter_by(domain="mineco.com").one()
+        assert len(mineco.targeting_links) == 0
+        for i in range(3):
+            ph = s.query(Company).filter_by(domain=f"pharma{i}.com").one()
+            assert {l.targeting_profile_id for l in ph.targeting_links} == {prof_id}
+
+    # Re-running LINK is a no-op: links_changed == 0.
+    resp = client.post(
+        "/admin/companies/segment-profiles/bulk",
+        data={"segment_key": "healthcare", "action": "link", "profile_ids": [str(prof_id)]},
+    )
+    assert resp.json()["links_changed"] == 0
+
+    # UNLINK reverses it.
+    resp = client.post(
+        "/admin/companies/segment-profiles/bulk",
+        data={"segment_key": "healthcare", "action": "unlink", "profile_ids": [str(prof_id)]},
+    )
+    assert resp.json()["links_changed"] == 3
+
+    with SessionLocal() as s:
+        for i in range(3):
+            ph = s.query(Company).filter_by(domain=f"pharma{i}.com").one()
+            assert len(ph.targeting_links) == 0
+
+
+def test_bulk_segment_profile_rejects_bad_action(env):
+    client, _ = env
+    resp = client.post(
+        "/admin/companies/segment-profiles/bulk",
+        data={
+            "segment_key": "healthcare",
+            "action": "wipe-all",  # invalid
+            "profile_ids": ["00000000-0000-0000-0000-000000000000"],
+        },
+    )
+    assert resp.status_code == 400
+
+
 def test_routing_rule_create_and_reorder(env):
     client, SessionLocal = env
     with SessionLocal() as s:
