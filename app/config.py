@@ -5,7 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Multiple dotenv files supported, last wins. `.env.dev` lets the local
+    # dev sandbox override prod creds without editing `.env`. In prod (Render)
+    # neither file exists — env vars come from the Render env group.
+    model_config = SettingsConfigDict(env_file=(".env", ".env.dev"), extra="ignore")
 
     APOLLO_API_KEY: str = ""
     DATABASE_URL: str = "sqlite:///./lead_engine.sqlite"
