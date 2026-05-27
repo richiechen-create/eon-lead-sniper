@@ -1,0 +1,60 @@
+{# Single lead row. Used by the grouped-by-rep view in leads.html.
+   Expects: `lead` (Lead instance) and `reps` (active reps) in scope. #}
+<tr class="border-t border-gray-100">
+  <td class="px-3 py-2">{{ lead.full_name or '—' }}</td>
+  <td class="px-3 py-2 text-gray-600">{{ lead.title or '—' }}</td>
+  <td class="px-3 py-2">
+    {% if lead.company %}
+      <span class="text-gray-900">{{ lead.company.company_name }}</span>
+      <span class="text-xs text-gray-400 block">{{ lead.company.domain }}</span>
+    {% endif %}
+  </td>
+  <td class="px-3 py-2 text-gray-700 text-xs">
+    {% if lead.person_country %}{{ lead.person_country }}{% else %}<span class="text-gray-400">—</span>{% endif %}
+    {% if lead.person_city %}<span class="text-gray-400 block">{{ lead.person_city }}</span>{% endif %}
+  </td>
+  <td class="px-3 py-2 text-xs">
+    {% if lead.email %}
+      <a href="mailto:{{ lead.email }}" class="text-brand-crimson font-mono hover:underline">{{ lead.email }}</a>
+    {% else %}
+      <span class="text-gray-400">— no email</span>
+    {% endif %}
+    {% if lead.linkedin_url %}
+      <a href="{{ lead.linkedin_url }}" target="_blank" rel="noopener"
+         class="block text-brand-navy hover:underline">LinkedIn ↗</a>
+    {% endif %}
+  </td>
+  <td class="px-3 py-2">
+    <span class="text-xs px-2 py-0.5 rounded
+      {% if lead.delivery_status == 'delivered' %}bg-emerald-100 text-emerald-700
+      {% elif lead.delivery_status == 'pending' %}bg-blue-100 text-blue-700
+      {% else %}bg-gray-100 text-gray-600{% endif %}">
+      {{ lead.delivery_status }}
+    </span>
+  </td>
+  <td class="px-3 py-2">
+    <span class="text-xs px-2 py-0.5 rounded
+      {% if lead.routing_status == 'fallback' %}bg-amber-100 text-amber-700
+      {% elif lead.routing_status == 'company_override' %}bg-indigo-100 text-indigo-700
+      {% elif lead.routing_status == 'rule_matched' %}bg-emerald-100 text-emerald-700
+      {% else %}bg-gray-100 text-gray-600{% endif %}">
+      {{ lead.routing_status or '—' }}
+    </span>
+  </td>
+  <td class="px-3 py-2 text-right space-x-2 whitespace-nowrap">
+    <form hx-patch="/admin/leads/{{ lead.id }}/rep" hx-swap="none" class="inline">
+      <select name="new_rep" onchange="this.form.requestSubmit()"
+              class="text-xs border border-gray-300 rounded px-1 py-0.5">
+        <option value="">Reassign…</option>
+        {% for r in reps %}
+          <option value="{{ r.email }}">{{ r.name or r.email }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <button hx-post="/admin/leads/{{ lead.id }}/skip" hx-swap="none"
+            class="text-xs text-gray-600 hover:text-gray-900">Skip</button>
+    <button hx-post="/admin/leads/{{ lead.id }}/suppress" hx-swap="none"
+            hx-confirm="Add {{ lead.email or lead.full_name }} to DNC and skip this lead?"
+            class="text-xs text-red-600 hover:text-red-700">Suppress</button>
+  </td>
+</tr>

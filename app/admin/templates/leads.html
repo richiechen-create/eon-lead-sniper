@@ -14,13 +14,13 @@
 </div>
 
 {% if not fallback_view %}
-<form method="get" action="/admin/leads" class="bg-white shadow rounded-lg p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+<form method="get" action="/admin/leads" class="bg-white shadow rounded-lg p-4 mb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
   <input name="search" placeholder="Search name / title / email" value="{{ search }}"
          class="border border-gray-300 rounded px-3 py-1.5 text-sm lg:col-span-2"/>
   <input name="company" placeholder="Company name" value="{{ company_filter }}"
          class="border border-gray-300 rounded px-3 py-1.5 text-sm"/>
   <select name="rep" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
-    <option value="">Any rep</option>
+    <option value="">Group by rep (default)</option>
     {% for r in reps %}
       <option value="{{ r.email }}" {% if rep_filter == r.email %}selected{% endif %}>{{ r.email }}</option>
     {% endfor %}
@@ -33,14 +33,134 @@
   </select>
   <select name="routing_status" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
     <option value="">Any routing</option>
-    {% for s in ['matched', 'fallback'] %}
-      <option value="{{ s }}" {% if routing_status_filter == s %}selected{% endif %}>{{ s }}</option>
-    {% endfor %}
+    <option value="company_override" {% if routing_status_filter == 'company_override' %}selected{% endif %}>Company override</option>
+    <option value="rule_matched" {% if routing_status_filter == 'rule_matched' %}selected{% endif %}>Matched by rule</option>
+    <option value="fallback" {% if routing_status_filter == 'fallback' %}selected{% endif %}>Fallback to Dan</option>
   </select>
   <button class="bg-brand-crimson text-white text-sm px-4 py-1.5 rounded hover:bg-brand-crimson-700 font-medium">Filter</button>
 </form>
+
+{# Quick chips — only on the grouped view, since they pivot on totals across all reps #}
+{% if grouped_view and totals %}
+<div class="flex flex-wrap items-center gap-2 mb-4 text-sm">
+  {% set chip_base = "px-3 py-1 rounded-full border" %}
+  {% set chip_active = "bg-brand-crimson text-white border-brand-crimson" %}
+  {% set chip_inactive = "bg-white text-gray-700 border-gray-300 hover:border-brand-crimson hover:text-brand-crimson" %}
+
+  <a href="/admin/leads" class="{{ chip_base }} {% if not status_filter and not routing_status_filter %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+    All {{ totals.all_total }}
+  </a>
+  <a href="/admin/leads?status=pending" class="{{ chip_base }} {% if status_filter == 'pending' and not routing_status_filter %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+    Pending {{ totals.pending_total }}
+  </a>
+  <a href="/admin/leads?status=pending&amp;routing_status=fallback" class="{{ chip_base }} {% if routing_status_filter == 'fallback' %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+    Fallback {{ totals.fallback_total }}
+  </a>
+  <a href="/admin/leads?status=skipped" class="{{ chip_base }} {% if status_filter == 'skipped' %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+    Skipped {{ totals.skipped_total }}
+  </a>
+</div>
+
+{# Fallback summary banner — only when there's at least one fallback-pending lead #}
+{% if totals.fallback_total > 0 and routing_status_filter != 'fallback' %}
+<div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 mb-4 flex items-center justify-between text-sm">
+  <span>
+    ⚠ <strong>{{ totals.fallback_total }} leads</strong> are pending in the fallback bucket.
+    Routing rules didn't match — review and reassign, or refine rules at
+    <a href="/admin/routing-rules" class="underline">/admin/routing-rules</a>.
+  </span>
+  <a href="/admin/leads?status=pending&amp;routing_status=fallback#fallback-section"
+     class="bg-amber-600 text-white px-3 py-1 rounded hover:bg-amber-700 text-xs font-medium whitespace-nowrap ml-3">
+    Triage now →
+  </a>
+</div>
+{% endif %}
+{% endif %}
 {% endif %}
 
+{# ============================================================
+   GROUPED-BY-REP VIEW
+   ============================================================ #}
+{% if grouped_view and sections is not none %}
+  {% if sections|length == 0 %}
+    <div class="bg-white shadow rounded-lg p-6 text-center text-gray-500">
+      No leads match these filters.
+    </div>
+  {% endif %}
+
+  {% for sec in sections %}
+    {% set sec_id = 'sec-' ~ loop.index %}
+    <details class="bg-white shadow rounded-lg mb-3 group js-lead-section"
+             data-rep-email="{{ sec.rep_email|lower }}"
+             {% if sec.fallback_count > 0 %}open{% endif %}
+             id="{% if sec.routing_status_filter == 'fallback' or (loop.first and routing_status_filter == 'fallback') %}fallback-section{% else %}{{ sec_id }}{% endif %}">
+      <summary class="cursor-pointer px-4 py-3 flex items-center justify-between gap-3 list-none">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-gray-400 group-open:rotate-90 transition-transform inline-block">▸</span>
+          <div class="min-w-0">
+            <div class="font-medium text-brand-ink truncate">
+              {{ sec.rep_name or sec.rep_email }}
+              <span class="text-xs text-gray-500 font-normal">({{ sec.rep_email }})</span>
+            </div>
+            <div class="text-xs text-gray-600 mt-0.5 flex flex-wrap items-center gap-x-3">
+              <span><strong class="text-brand-ink">{{ sec.pending_count }}</strong> pending</span>
+              {% if sec.fallback_count > 0 %}
+                <span class="text-amber-700"><strong>{{ sec.fallback_count }}</strong> fallback</span>
+              {% endif %}
+              {% if sec.skipped_count > 0 %}
+                <span class="text-gray-500"><strong>{{ sec.skipped_count }}</strong> skipped</span>
+              {% endif %}
+              {% if sec.no_email_count > 0 %}
+                <span class="text-gray-500"><strong>{{ sec.no_email_count }}</strong> no email</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {% if sec.fallback_count > 0 %}
+          <div class="flex-shrink-0" onclick="event.stopPropagation();">
+            <select class="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:border-brand-crimson"
+                    onchange="bulkReassignFallback('{{ sec.rep_email }}', this.value); this.value='';">
+              <option value="">Reassign all {{ sec.fallback_count }} fallback to…</option>
+              {% for r in reps %}
+                {% if r.email|lower != sec.rep_email|lower %}
+                  <option value="{{ r.email }}">{{ r.name or r.email }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+        {% endif %}
+      </summary>
+
+      <div class="overflow-x-auto border-t border-gray-100">
+        <table class="w-full text-sm">
+          <thead class="text-xs uppercase text-gray-500 bg-gray-50">
+            <tr>
+              <th class="text-left px-3 py-2">Name</th>
+              <th class="text-left px-3 py-2">Title</th>
+              <th class="text-left px-3 py-2">Company</th>
+              <th class="text-left px-3 py-2">Country</th>
+              <th class="text-left px-3 py-2">Email / LinkedIn</th>
+              <th class="text-left px-3 py-2">Status</th>
+              <th class="text-left px-3 py-2">Routing</th>
+              <th class="text-right px-3 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for lead in sec.leads %}
+            {% include "_lead_row.html" %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  {% endfor %}
+
+{% else %}
+
+{# ============================================================
+   FLAT VIEW (fallback page, or ?rep=X drilldown)
+   ============================================================ #}
 <div class="bg-white shadow rounded-lg overflow-x-auto">
   <table class="w-full text-sm">
     <thead class="text-xs uppercase text-gray-500 bg-gray-50">
@@ -136,5 +256,61 @@
   </div>
 </div>
 {% endif %}
+
+{% endif %}
+
+{# ============================================================
+   JS for collapsible-state persistence + bulk-reassign POSTing
+   ============================================================ #}
+<script>
+(function () {
+  // Persist <details open> state per rep across reloads.
+  const LS_KEY = 'lead_engine_leads_section_collapsed_v1';
+  const collapsed = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+
+  document.querySelectorAll('.js-lead-section').forEach(function (el) {
+    const key = el.dataset.repEmail;
+    if (!key) return;
+    // If user explicitly collapsed this section in a prior session, respect it.
+    if (collapsed[key] === true) {
+      el.removeAttribute('open');
+    }
+    el.addEventListener('toggle', function () {
+      collapsed[key] = !el.open;
+      localStorage.setItem(LS_KEY, JSON.stringify(collapsed));
+    });
+  });
+})();
+
+async function bulkReassignFallback(fromRepEmail, toRepEmail) {
+  if (!toRepEmail) return;
+  if (!confirm(`Reassign all fallback leads from ${fromRepEmail} to ${toRepEmail}?`)) return;
+
+  const resp = await fetch('/admin/leads/bulk-reassign', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      new_rep_email: toRepEmail,
+      filter: {
+        assigned_rep_email: fromRepEmail,
+        routing_status: 'fallback',
+        delivery_status: 'pending'
+      }
+    })
+  });
+  if (!resp.ok) {
+    const detail = await resp.text();
+    alert('Bulk-reassign failed: ' + detail);
+    return;
+  }
+  const body = await resp.json();
+  // Tiny toast then reload — keeps the UX consistent with the rest of /admin.
+  const toast = document.createElement('div');
+  toast.textContent = `Reassigned ${body.updated} leads to ${body.new_rep}`;
+  toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1A1F4D;color:#fff;padding:10px 16px;border-radius:6px;z-index:9999;font-size:14px';
+  document.body.appendChild(toast);
+  setTimeout(() => window.location.reload(), 800);
+}
+</script>
 
 {% endblock %}

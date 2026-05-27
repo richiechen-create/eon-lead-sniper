@@ -374,3 +374,211 @@ def test_runs_page_tabs(env):
     resp = client.get("/admin/runs?tab=digest", headers={"Accept": "text/html"})
     assert resp.status_code == 200
     assert "Digest runs" in resp.text
+
+
+# ===== leads-grouped-by-rep spec — AC #12 + AC #13 =========================
+
+
+def _seed_grouped_leads(SessionLocal):
+    """Seed: Dan with 5 fallback-pending leads, Mats with 2 rule_matched-pending,
+    plus 1 skipped lead for Dan to test no-email count."""
+    from app.models import Lead
+    from app.models.base import utcnow
+
+    with SessionLocal() as s:
+        s.add_all([
+            Rep(email="dan@eonreality.com", name="Dan", timezone="UTC", is_active=True),
+            Rep(email="mats@eonreality.com", name="Mats", timezone="UTC", is_active=True),
+        ])
+        s.flush()
+
+        company = Company(company_name="Co", domain="co.com")
+        s.add(company)
+        s.flush()
+        company_id = company.id
+
+        for i in range(5):
+            s.add(Lead(
+                company_id=company_id,
+                apollo_person_id=f"dan-p{i}",
+                email=f"dan-p{i}@co.com",
+                assigned_rep_email="dan@eonreality.com",
+                assigned_rep_name="Dan",
+                routing_status="fallback",
+                delivery_status="pending",
+                date_discovered=utcnow(),
+            ))
+        for i in range(2):
+            s.add(Lead(
+                company_id=company_id,
+                apollo_person_id=f"mats-p{i}",
+                email=f"mats-p{i}@co.com",
+                assigned_rep_email="mats@eonreality.com",
+                assigned_rep_name="Mats",
+                routing_status="rule_matched",
+                delivery_status="pending",
+                date_discovered=utcnow(),
+            ))
+        # One skipped no-email lead for Dan
+        s.add(Lead(
+            company_id=company_id,
+            apollo_person_id="dan-skipped",
+            email=None,
+            assigned_rep_email="dan@eonreality.com",
+            assigned_rep_name="Dan",
+            routing_status="fallback",
+            delivery_status="skipped",
+            date_discovered=utcnow(),
+        ))
+        s.commit()
+
+
+def test_bulk_reassign_filter_updates_all_matching_leads(env):
+    """AC #12: bulk-reassign 5 fallback leads from Dan to Mats updates all 5
+    and sets routing_status='company_override' on each. Returns {'updated': 5}."""
+    from app.models import ApiCallLog, Lead
+
+    client, SessionLocal = env
+    _seed_grouped_leads(SessionLocal)
+
+    resp = client.post(
+        "/admin/leads/bulk-reassign",
+        json={
+            "new_rep_email": "mats@eonreality.com",
+            "filter": {
+                "assigned_rep_email": "dan@eonreality.com",
+                "routing_status": "fallback",
+                "delivery_status": "pending",
+            },
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"updated": 5, "new_rep": "mats@eonreality.com"}
+
+    with SessionLocal() as s:
+        moved = s.query(Lead).filter_by(
+            assigned_rep_email="mats@eonreality.com",
+            routing_status="company_override",
+        ).all()
+        # 5 newly moved + 2 Mats already had (but those are rule_matched, not company_override)
+        assert len(moved) == 5
+        # Dan's pending fallback bucket is now empty
+        assert s.query(Lead).filter_by(
+            assigned_rep_email="dan@eonreality.com",
+            routing_status="fallback",
+            delivery_status="pending",
+        ).count() == 0
+        # The skipped Dan lead is untouched (filter required pending)
+        assert s.query(Lead).filter_by(
+            apollo_person_id="dan-skipped"
+        ).one().assigned_rep_email == "dan@eonreality.com"
+        # Audit row exists
+        assert s.query(ApiCallLog).filter_by(
+            endpoint="/admin/leads/bulk-reassign"
+        ).count() == 1
+
+
+def test_bulk_reassign_explicit_lead_ids(env):
+    from app.models import Lead
+
+    client, SessionLocal = env
+    _seed_grouped_leads(SessionLocal)
+
+    with SessionLocal() as s:
+        ids = [str(l.id) for l in s.query(Lead).filter(
+            Lead.apollo_person_id.in_(["dan-p0", "dan-p1"])
+        ).all()]
+
+    resp = client.post(
+        "/admin/leads/bulk-reassign",
+        json={"new_rep_email": "mats@eonreality.com", "lead_ids": ids},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["updated"] == 2
+
+
+def test_bulk_reassign_rejects_inactive_rep(env):
+    client, SessionLocal = env
+    _seed_grouped_leads(SessionLocal)
+    # Mark Mats inactive
+    with SessionLocal() as s:
+        s.query(Rep).filter_by(email="mats@eonreality.com").update({"is_active": False})
+        s.commit()
+
+    resp = client.post(
+        "/admin/leads/bulk-reassign",
+        json={
+            "new_rep_email": "mats@eonreality.com",
+            "filter": {"assigned_rep_email": "dan@eonreality.com"},
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_bulk_reassign_requires_lead_ids_or_filter(env):
+    client, _ = env
+    resp = client.post(
+        "/admin/leads/bulk-reassign",
+        json={"new_rep_email": "mats@eonreality.com"},
+    )
+    assert resp.status_code == 400
+
+
+def test_bulk_reassign_rejects_unsupported_filter_keys(env):
+    client, SessionLocal = env
+    _seed_grouped_leads(SessionLocal)
+    resp = client.post(
+        "/admin/leads/bulk-reassign",
+        json={
+            "new_rep_email": "mats@eonreality.com",
+            "filter": {"email": "anything@x.com"},
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_grouped_view_renders_with_counts(env):
+    """AC #13: GET /admin/leads renders sections with counts matching the DB."""
+    client, SessionLocal = env
+    _seed_grouped_leads(SessionLocal)
+
+    resp = client.get("/admin/leads", headers={"Accept": "text/html"})
+    assert resp.status_code == 200
+    text = resp.text
+    # Both rep emails appear (one section each)
+    assert "dan@eonreality.com" in text
+    assert "mats@eonreality.com" in text
+    # Fallback banner says 5 leads
+    assert "5 leads" in text or "5</strong>" in text
+    # Chips render with totals: 8 actionable (5 fallback + 2 matched + 1 skipped), 7 pending, 5 fallback, 1 skipped
+    assert "All 8" in text
+    assert "Pending 7" in text
+    assert "Fallback 5" in text
+    assert "Skipped 1" in text
+    # The "Reassign all 5 fallback to…" dropdown only appears for Dan's section
+    assert "Reassign all 5 fallback" in text
+
+
+def test_single_rep_filter_still_flat_table(env):
+    """AC #8: ?rep=X keeps the existing flat-table view (no grouping)."""
+    client, SessionLocal = env
+    _seed_grouped_leads(SessionLocal)
+
+    resp = client.get("/admin/leads?rep=mats@eonreality.com", headers={"Accept": "text/html"})
+    assert resp.status_code == 200
+    # Flat view doesn't render the chips banner ("All N" pill is grouped-only)
+    assert "All 8" not in resp.text
+    # But shows Mats's leads
+    assert "mats-p0@co.com" in resp.text
+
+
+def test_routing_status_dropdown_has_correct_options(env):
+    """AC #7: the routing_status select lists the three current values, no stale 'matched'."""
+    client, _ = env
+    resp = client.get("/admin/leads", headers={"Accept": "text/html"})
+    assert resp.status_code == 200
+    assert "Company override" in resp.text
+    assert "Matched by rule" in resp.text
+    assert "Fallback to Dan" in resp.text
+    # Stale value should be gone
+    assert ">matched<" not in resp.text
