@@ -80,6 +80,58 @@ def test_csv_has_segment_column(session):
     assert body[seg_idx] == "Healthcare"
 
 
+def test_run_digest_tick_only_rep_scopes_to_one(session, monkeypatch):
+    """only_rep=email sends ONLY that rep's digest, skipping all others.
+    Bypasses the 08:00 local-time gate automatically."""
+    company = _seed_company(session)
+    rep_a = Rep(email="a@x.com", name="Alice", timezone="UTC", is_active=True)
+    rep_b = Rep(email="b@x.com", name="Bob", timezone="UTC", is_active=True)
+    session.add_all([rep_a, rep_b])
+    session.flush()
+
+    _make_lead(session, company, rep_email="a@x.com", apollo_person_id="a1")
+    _make_lead(session, company, rep_email="a@x.com", apollo_person_id="a2")
+    _make_lead(session, company, rep_email="b@x.com", apollo_person_id="b1")
+
+    sent = []
+
+    def fake_send_email(**kwargs):
+        sent.append(kwargs["to"])
+        return {"ok": True}
+
+    monkeypatch.setattr("app.digest.scheduler.send_email", fake_send_email)
+
+    # 3am UTC — would normally fail the 08:00 gate, but only_rep implies force.
+    run = run_digest_tick(
+        session, now_utc=datetime(2026, 5, 20, 3, 0), only_rep="a@x.com"
+    )
+
+    assert run.reps_emailed == 1
+    assert run.total_leads_delivered == 2
+    assert sent == [["a@x.com"]]
+    # Alice's leads are now delivered, Bob's are still pending.
+    delivered_a = [l for l in session.query(Lead).filter_by(assigned_rep_email="a@x.com")]
+    assert all(l.delivery_status == "delivered" for l in delivered_a)
+    pending_b = [l for l in session.query(Lead).filter_by(assigned_rep_email="b@x.com")]
+    assert all(l.delivery_status == "pending" for l in pending_b)
+
+
+def test_run_digest_tick_only_rep_skips_inactive(session, monkeypatch):
+    """If only_rep points at an inactive rep, no email is sent (no error)."""
+    company = _seed_company(session)
+    session.add(Rep(email="z@x.com", name="Zelda", timezone="UTC", is_active=False))
+    session.flush()
+    _make_lead(session, company, rep_email="z@x.com", apollo_person_id="z1")
+
+    monkeypatch.setattr("app.digest.scheduler.send_email", lambda **k: {"ok": True})
+
+    run = run_digest_tick(
+        session, now_utc=datetime(2026, 5, 20, 8, 0), only_rep="z@x.com"
+    )
+    assert run.reps_emailed == 0
+    assert run.errors == []
+
+
 def test_csv_segment_blank_when_industry_missing(session):
     """Companies without an industry should still get a row — Segment is blank."""
     import csv as csv_lib

@@ -56,10 +56,25 @@
           </button>
         </div>
       </div>
-      <button onclick="confirmAndRun('/admin/triggers/digest?force=true', 'Send digests to ALL active reps with pending leads RIGHT NOW (ignores the 08:00-local-time gate)? This is a manual override — leads will be marked delivered and will not appear in the scheduled morning digest.', this)"
-              class="w-full bg-brand-navy text-white text-sm py-2 rounded hover:bg-brand-navy-700 font-medium">
-        Send digests now (force)
-      </button>
+      <div>
+        <label class="block text-xs font-medium text-brand-muted mb-1">Send digests now (force)</label>
+        <div class="flex gap-2">
+          <select id="digest-send-rep"
+                  class="flex-1 border border-brand-border rounded px-2 py-1.5 text-sm">
+            <option value="">All active reps</option>
+            {% for r in test_digest_reps %}
+              <option value="{{ r.email }}">{{ r.name }} &lt;{{ r.email }}&gt; ({{ r.count }} leads)</option>
+            {% endfor %}
+          </select>
+          <button onclick="triggerDigestSend()"
+                  class="bg-brand-navy text-white text-sm px-3 py-1.5 rounded hover:bg-brand-navy-700 font-medium whitespace-nowrap">
+            Send
+          </button>
+        </div>
+        {% if not test_digest_reps %}
+          <p class="text-xs text-brand-muted mt-1">No reps have pending leads yet.</p>
+        {% endif %}
+      </div>
       <button onclick="confirmAndRun('/admin/triggers/reroute-pending', 'Re-run the routing cascade for every pending lead? Useful after changing routing rules so existing leads pick up the new assignments. Manual reassignments (company_override) are preserved.', this)"
               class="w-full bg-white border border-brand-border text-brand-ink text-sm py-2 rounded hover:bg-brand-navy-50 font-medium">
         Re-route pending leads
@@ -419,6 +434,26 @@ async function triggerEnrichment() {
       )) return;
   await window.runEnrichmentWithProgress(scope || null, label);
   location.reload();
+}
+
+async function triggerDigestSend() {
+  const rep = document.getElementById('digest-send-rep').value;
+  const who = rep ? rep : 'ALL active reps with pending leads';
+  const msg = rep
+    ? `Send ${rep}'s digest RIGHT NOW (ignores the 08:00-local-time gate)?\n\nTheir pending leads will be marked delivered.`
+    : `Send digests to ALL active reps with pending leads RIGHT NOW (ignores the 08:00-local-time gate)?\n\nThis is a manual override — leads will be marked delivered and will not appear in the scheduled morning digest.`;
+  if (!window.confirm(msg)) return;
+  let url = '/admin/triggers/digest?force=true';
+  if (rep) url += '&rep=' + encodeURIComponent(rep);
+  try {
+    const resp = await fetch(url, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    alert('Done.\n\n' + JSON.stringify(data, null, 2));
+    location.reload();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
 }
 
 async function triggerTestDigest() {

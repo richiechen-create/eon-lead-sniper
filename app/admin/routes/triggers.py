@@ -118,6 +118,7 @@ def trigger_enrichment_boost(
 def trigger_digest(
     send_admin: bool = False,
     force: bool = False,
+    rep: Optional[str] = None,
     _user: str = Depends(require_admin),
 ) -> dict:
     """Run a digest tick.
@@ -125,9 +126,15 @@ def trigger_digest(
     `force=true` ignores the 08:00-local-time + weekday gate and sends to
     every active rep with pending+deliverable leads — used by the dashboard's
     manual button. Default (False) honors the schedule, same as cron.
+
+    `rep` (email): when set, scopes the run to that single rep (implies
+    force=True for them). Used to stagger sends — fire the rep with 12
+    leads now, hold the rep with 1 lead until more accumulate. Returns
+    `reps_emailed=0` with no error if the chosen rep has no pending leads
+    or isn't active.
     """
     with session_scope() as session:
-        run = run_digest_tick(session, force=force)
+        run = run_digest_tick(session, force=force, only_rep=rep)
         if send_admin:
             send_admin_summary(session)
     return {
@@ -136,6 +143,7 @@ def trigger_digest(
         "total_leads_delivered": run.total_leads_delivered,
         "errors": run.errors or [],
         "forced": force,
+        "scoped_to_rep": rep,
     }
 
 

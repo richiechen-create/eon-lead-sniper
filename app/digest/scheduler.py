@@ -91,21 +91,35 @@ def run_digest_tick(
     now_utc: Optional[datetime] = None,
     *,
     force: bool = False,
+    only_rep: Optional[str] = None,
 ) -> DigestRun:
     """Hourly digest dispatch.
 
     `force=True` sends to every active rep with pending+deliverable leads,
     ignoring local-hour and weekday gates. Used by the dashboard's manual
     button — cron scripts always use the default (force=False).
+
+    `only_rep` (email): when set, scopes the run to that single rep instead
+    of looping all actives. Implies `force=True` behavior for that rep (the
+    operator wouldn't manually trigger a single-rep send if they wanted the
+    schedule gate to apply). Useful for staggering sends when some reps
+    have only 1-2 leads and others have many — operator can hold the small
+    ones, send the full ones.
     """
     now_utc = now_utc or datetime.utcnow()
     run = DigestRun(run_date=now_utc.date(), errors=[])
     session.add(run)
     session.flush()
 
-    reps = session.execute(
-        select(Rep).where(Rep.is_active == True)  # noqa: E712
-    ).scalars().all()
+    rep_stmt = select(Rep).where(Rep.is_active == True)  # noqa: E712
+    if only_rep:
+        rep_stmt = rep_stmt.where(Rep.email == only_rep.strip().lower())
+    reps = session.execute(rep_stmt).scalars().all()
+
+    # Single-rep mode always bypasses the time gate — manual override is the
+    # whole point of this code path.
+    if only_rep:
+        force = True
 
     reps_emailed = 0
     total_delivered = 0
