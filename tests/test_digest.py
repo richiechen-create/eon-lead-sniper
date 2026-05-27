@@ -56,6 +56,46 @@ def test_build_digest_returns_none_when_no_leads():
     assert build_digest("r@x.com", "Rep", [], datetime(2026, 5, 22, 8, 0)) is None
 
 
+def test_csv_has_segment_column(session):
+    """The CSV must include a Segment column derived from companies.industry,
+    title-cased for human readability."""
+    import csv as csv_lib
+    import io
+
+    a = _seed_company(session, "Acme Pharma", "acme.com")
+    a.industry = "healthcare"  # stored lowercase per the normalization rule
+    session.flush()
+    leads = [_make_lead(session, a, rep_email="r@x.com", apollo_person_id="seg-1")]
+
+    d = build_digest("r@x.com", "Rep", leads, datetime(2026, 5, 22, 8, 0))
+    rows = list(csv_lib.reader(io.StringIO(d.csv_bytes.decode("utf-8"))))
+    header = rows[0]
+    body = rows[1]
+
+    assert "Segment" in header
+    seg_idx = header.index("Segment")
+    # Segment is positioned right after Domain
+    assert header.index("Domain") + 1 == seg_idx
+    # Value is title-cased (the rep sees "Healthcare", not "healthcare")
+    assert body[seg_idx] == "Healthcare"
+
+
+def test_csv_segment_blank_when_industry_missing(session):
+    """Companies without an industry should still get a row — Segment is blank."""
+    import csv as csv_lib
+    import io
+
+    a = _seed_company(session, "Mystery Co", "myst.com")
+    a.industry = None
+    session.flush()
+    leads = [_make_lead(session, a, rep_email="r@x.com", apollo_person_id="seg-2")]
+
+    d = build_digest("r@x.com", "Rep", leads, datetime(2026, 5, 22, 8, 0))
+    rows = list(csv_lib.reader(io.StringIO(d.csv_bytes.decode("utf-8"))))
+    seg_idx = rows[0].index("Segment")
+    assert rows[1][seg_idx] == ""
+
+
 def test_scheduler_skips_reps_outside_local_8am(session, monkeypatch):
     # Wednesday 08:00 UTC. Rep is in NY (UTC-4 in May -> 04:00 local). Not eligible.
     rep = Rep(email="ny@x.com", name="NY Rep", timezone="America/New_York")

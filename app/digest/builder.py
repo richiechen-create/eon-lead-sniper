@@ -124,6 +124,7 @@ def _build_csv(leads: list[Lead]) -> bytes:
         [
             "Company",
             "Domain",
+            "Segment",
             "First Name",
             "Last Name",
             "Title",
@@ -145,10 +146,15 @@ def _build_csv(leads: list[Lead]) -> bytes:
             parts = lead.full_name.strip().split(None, 1)
             first = parts[0] if parts else ""
             last = parts[1] if len(parts) > 1 else ""
+        # Segment = the company's industry. Title-case it for the rep's eye —
+        # we store it lowercased internally for dedupe, but reps don't need to
+        # see "oil and gas"; "Oil And Gas" reads better in a spreadsheet.
+        segment = (company.industry or "").title()
         writer.writerow(
             [
                 company.company_name or "",
                 company.domain or "",
+                segment,
                 first,
                 last,
                 lead.title or "",
