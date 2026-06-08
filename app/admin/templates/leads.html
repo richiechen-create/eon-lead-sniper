@@ -60,17 +60,23 @@
   {% set chip_active = "bg-brand-crimson text-white border-brand-crimson" %}
   {% set chip_inactive = "bg-white text-gray-700 border-gray-300 hover:border-brand-crimson hover:text-brand-crimson" %}
 
-  <a href="/admin/leads" class="{{ chip_base }} {% if not status_filter and not routing_status_filter %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+  {# Preserve the current segment filter when chip-clicking — otherwise the segment dropdown gets wiped #}
+  {% set _seg = ('&segment=' ~ (segment_filter | urlencode)) if segment_filter else '' %}
+
+  <a href="/admin/leads?{{ _seg.lstrip('&') }}" class="{{ chip_base }} {% if not status_filter and not routing_status_filter %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
     All {{ totals.all_total }}
   </a>
-  <a href="/admin/leads?status=pending" class="{{ chip_base }} {% if status_filter == 'pending' and not routing_status_filter %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+  <a href="/admin/leads?status=pending{{ _seg }}" class="{{ chip_base }} {% if status_filter == 'pending' and not routing_status_filter %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
     Pending {{ totals.pending_total }}
   </a>
-  <a href="/admin/leads?status=pending&amp;routing_status=fallback" class="{{ chip_base }} {% if routing_status_filter == 'fallback' %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+  <a href="/admin/leads?status=pending&amp;routing_status=fallback{{ _seg }}" class="{{ chip_base }} {% if routing_status_filter == 'fallback' %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
     Fallback {{ totals.fallback_total }}
   </a>
-  <a href="/admin/leads?status=skipped" class="{{ chip_base }} {% if status_filter == 'skipped' %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+  <a href="/admin/leads?status=skipped{{ _seg }}" class="{{ chip_base }} {% if status_filter == 'skipped' %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
     Skipped {{ totals.skipped_total }}
+  </a>
+  <a href="/admin/leads?status=delivered{{ _seg }}" class="{{ chip_base }} {% if status_filter == 'delivered' %}{{ chip_active }}{% else %}{{ chip_inactive }}{% endif %}">
+    Delivered {{ totals.delivered_total }}
   </a>
 </div>
 

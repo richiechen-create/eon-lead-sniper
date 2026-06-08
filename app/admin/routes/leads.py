@@ -56,20 +56,23 @@ def _distinct_segments(session) -> list[str]:
 def _build_grouped_view(session, *, status, routing_status, company_q, search, segment=None):
     """Server-side group-by-rep for the default leads view.
 
-    Pulls all pending+skipped leads (filtered), buckets them by
-    assigned_rep_email, and returns a sorted list of section dicts. The
-    DEFAULT_REP_EMAIL bucket is pinned first when it has fallback leads;
-    other sections sort by pending_count desc.
+    Pulls ALL leads (filtered), buckets them by assigned_rep_email, and
+    returns a sorted list of section dicts. The DEFAULT_REP_EMAIL bucket
+    is pinned first when it has fallback leads; other sections sort by
+    pending_count desc.
+
+    The 'All' chip means literally all statuses (pending + skipped +
+    delivered). Operators rely on this to audit what's already been sent
+    without leaving this page; the Delivered chip narrows to just those.
     """
     settings = get_settings()
     default_email = (settings.DEFAULT_REP_EMAIL or "").lower()
 
-    # Default the grouped view to "actionable" leads (pending + skipped). The
-    # chips above the sections let the operator narrow further.
+    # Pull every lead — no implicit status filter. The status param (set
+    # by the chips) layers on top via _build_filter.
     stmt = (
         select(Lead)
         .options(joinedload(Lead.company))
-        .where(Lead.delivery_status.in_(["pending", "skipped"]))
         .order_by(Lead.date_discovered.desc())
     )
     stmt = _build_filter(
@@ -95,6 +98,7 @@ def _build_grouped_view(session, *, status, routing_status, company_q, search, s
                 "pending_count": 0,
                 "fallback_count": 0,
                 "skipped_count": 0,
+                "delivered_count": 0,
                 "no_email_count": 0,
             }
         b = buckets[key]
@@ -103,9 +107,11 @@ def _build_grouped_view(session, *, status, routing_status, company_q, search, s
             b["pending_count"] += 1
         if lead.delivery_status == "skipped":
             b["skipped_count"] += 1
+        if lead.delivery_status == "delivered":
+            b["delivered_count"] += 1
         # fallback_count counts ACTIONABLE fallback leads only (pending). A
-        # skipped lead is already off the digest path — counting it would
-        # mislead the operator into thinking the section has more to triage.
+        # skipped or already-delivered lead is off the digest path — counting
+        # it would mislead the operator into thinking there's more to triage.
         if lead.routing_status == "fallback" and lead.delivery_status == "pending":
             b["fallback_count"] += 1
         if not lead.email:
@@ -125,13 +131,18 @@ def _build_grouped_view(session, *, status, routing_status, company_q, search, s
     fallback_total = sum(s["fallback_count"] for s in sections)
     pending_total = sum(s["pending_count"] for s in sections)
     skipped_total = sum(s["skipped_count"] for s in sections)
-    all_total = pending_total + skipped_total
+    delivered_total = sum(s["delivered_count"] for s in sections)
+    # All = literally everything (pending + skipped + delivered). Operators
+    # asked for this — the prior "actionable only" definition hid already-sent
+    # leads, which made auditing impossible without leaving the page.
+    all_total = pending_total + skipped_total + delivered_total
 
     return sections, {
         "all_total": all_total,
         "pending_total": pending_total,
         "fallback_total": fallback_total,
         "skipped_total": skipped_total,
+        "delivered_total": delivered_total,
     }
 
 
