@@ -98,6 +98,75 @@ def test_companies_bulk_import(env):
     assert resp.json()["upserted"] == 2
 
 
+def test_leads_export_csv_filters_by_segment(env):
+    """GET /admin/leads/export.csv?segment=healthcare returns a CSV with
+    one row per matching lead, headers + Segment column populated.
+    Default with_email_only=true drops the no-email row."""
+    from app.models import Company, Lead
+    from app.models.base import utcnow
+
+    client, SessionLocal = env
+
+    with SessionLocal() as s:
+        ph = Company(company_name="Pharma1", domain="ph1.com",
+                     industry="healthcare", country="United States", is_active=True)
+        og = Company(company_name="OilCo", domain="oilco.com",
+                     industry="oil and gas", country="United States", is_active=True)
+        s.add_all([ph, og])
+        s.flush()
+        # 2 healthcare leads (one with email, one without); 1 oil lead.
+        s.add(Lead(company_id=ph.id, apollo_person_id="hc-1",
+                   first_name="Ann", last_name="Lee", title="VP L&D",
+                   email="ann@ph1.com", delivery_status="pending",
+                   date_discovered=utcnow()))
+        s.add(Lead(company_id=ph.id, apollo_person_id="hc-2",
+                   first_name="Bob", last_name="Kim", title="EHS Dir",
+                   email=None, linkedin_url="https://linkedin.com/in/bobkim",
+                   delivery_status="pending", date_discovered=utcnow()))
+        s.add(Lead(company_id=og.id, apollo_person_id="og-1",
+                   first_name="Carl", last_name="Tan", title="Pilot Trainer",
+                   email="carl@oilco.com", delivery_status="pending",
+                   date_discovered=utcnow()))
+        s.commit()
+
+    resp = client.get("/admin/leads/export.csv?segment=healthcare")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "attachment" in resp.headers["content-disposition"]
+    assert "leads-export-healthcare" in resp.headers["content-disposition"]
+
+    body = resp.text.strip().splitlines()
+    header = body[0]
+    assert header.startswith("Segment,Company,Domain")
+    # 1 data row: only Ann (Bob has no email; oil lead filtered out by segment)
+    assert len(body) == 2
+    assert "ann@ph1.com" in body[1]
+    assert "Healthcare" in body[1]  # title-cased
+    assert "oilco.com" not in resp.text
+    assert "bob@" not in resp.text and "bobkim" not in resp.text
+
+
+def test_leads_export_csv_with_email_only_false_includes_no_email(env):
+    """with_email_only=false should include LinkedIn-only / no-email rows."""
+    from app.models import Company, Lead
+    from app.models.base import utcnow
+
+    client, SessionLocal = env
+    with SessionLocal() as s:
+        ph = Company(company_name="Pharma1", domain="ph1.com",
+                     industry="healthcare", country="United States", is_active=True)
+        s.add(ph); s.flush()
+        s.add(Lead(company_id=ph.id, apollo_person_id="hc-3",
+                   first_name="Eve", last_name="Vu", title="L&D Mgr",
+                   email=None, linkedin_url="https://linkedin.com/in/evevu",
+                   delivery_status="pending", date_discovered=utcnow()))
+        s.commit()
+
+    resp = client.get("/admin/leads/export.csv?segment=healthcare&with_email_only=false")
+    assert resp.status_code == 200
+    assert "evevu" in resp.text
+
+
 def test_bulk_segment_profile_link_and_unlink(env):
     """Operator bulk-applies a targeting profile across every active company
     in a segment, then bulk-removes it. Idempotent both ways."""

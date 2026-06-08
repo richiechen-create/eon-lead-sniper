@@ -7,18 +7,31 @@
     {% if fallback_view %}Fallback triage{% else %}Leads{% endif %}
   </h1>
   {% if not fallback_view %}
-  <a href="/admin/leads/fallback" class="text-sm bg-amber-100 text-amber-800 px-3 py-1.5 rounded hover:bg-amber-200">
-    Fallback queue →
-  </a>
+  <div class="flex items-center gap-2">
+    <a href="/admin/leads/export.csv?{{ {'segment': segment_filter, 'rep': rep_filter, 'status': status_filter, 'routing_status': routing_status_filter, 'company': company_filter, 'search': search} | urlencode }}"
+       class="text-sm bg-white border border-brand-border text-brand-ink px-3 py-1.5 rounded hover:bg-brand-navy-50"
+       title="Download a CSV of every lead matching the current filters (emails only).">
+      Download CSV ↓
+    </a>
+    <a href="/admin/leads/fallback" class="text-sm bg-amber-100 text-amber-800 px-3 py-1.5 rounded hover:bg-amber-200">
+      Fallback queue →
+    </a>
+  </div>
   {% endif %}
 </div>
 
 {% if not fallback_view %}
-<form method="get" action="/admin/leads" class="bg-white shadow rounded-lg p-4 mb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+<form method="get" action="/admin/leads" class="bg-white shadow rounded-lg p-4 mb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
   <input name="search" placeholder="Search name / title / email" value="{{ search }}"
          class="border border-gray-300 rounded px-3 py-1.5 text-sm lg:col-span-2"/>
   <input name="company" placeholder="Company name" value="{{ company_filter }}"
          class="border border-gray-300 rounded px-3 py-1.5 text-sm"/>
+  <select name="segment" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+    <option value="">Any segment</option>
+    {% for s in segments %}
+      <option value="{{ s }}" {% if segment_filter == s %}selected{% endif %}>{{ s | title }}</option>
+    {% endfor %}
+  </select>
   <select name="rep" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
     <option value="">Group by rep (default)</option>
     {% for r in reps %}

@@ -16,15 +16,21 @@ router = APIRouter(prefix="/leads")
 PAGE_SIZE = 50
 
 
-def _build_filter(stmt, *, rep, status, routing_status, company_q, search):
+def _build_filter(stmt, *, rep, status, routing_status, company_q, search, segment=None):
     if rep:
         stmt = stmt.where(Lead.assigned_rep_email == rep)
     if status:
         stmt = stmt.where(Lead.delivery_status == status)
     if routing_status:
         stmt = stmt.where(Lead.routing_status == routing_status)
+    # company_q + segment both need a join on Company — do it once.
+    if company_q or segment:
+        stmt = stmt.join(Company, Lead.company_id == Company.id)
     if company_q:
-        stmt = stmt.join(Company).where(Company.company_name.ilike(f"%{company_q}%"))
+        stmt = stmt.where(Company.company_name.ilike(f"%{company_q}%"))
+    if segment:
+        seg_key = (segment or "").strip().lower()
+        stmt = stmt.where(func.lower(func.trim(Company.industry)) == seg_key)
     if search:
         like = f"%{search}%"
         stmt = stmt.where(
@@ -37,7 +43,17 @@ def _build_filter(stmt, *, rep, status, routing_status, company_q, search):
     return stmt
 
 
-def _build_grouped_view(session, *, status, routing_status, company_q, search):
+def _distinct_segments(session) -> list[str]:
+    """Sorted list of distinct non-empty industries, for the filter dropdown."""
+    rows = session.execute(
+        select(func.lower(func.trim(Company.industry)))
+        .where(Company.industry.is_not(None), func.trim(Company.industry) != "")
+        .distinct()
+    ).all()
+    return sorted({r[0] for r in rows if r[0]})
+
+
+def _build_grouped_view(session, *, status, routing_status, company_q, search, segment=None):
     """Server-side group-by-rep for the default leads view.
 
     Pulls all pending+skipped leads (filtered), buckets them by
@@ -63,6 +79,7 @@ def _build_grouped_view(session, *, status, routing_status, company_q, search):
         routing_status=routing_status,
         company_q=company_q,
         search=search,
+        segment=segment,
     )
     all_leads = list(session.execute(stmt).scalars())
 
@@ -126,6 +143,7 @@ def leads_index(
     routing_status: Optional[str] = None,
     company: Optional[str] = None,
     search: Optional[str] = None,
+    segment: Optional[str] = None,
     page: int = 1,
     _user: str = Depends(require_admin),
 ):
@@ -133,6 +151,18 @@ def leads_index(
     with session_scope() as session:
         reps = list(
             session.execute(select(Rep).where(Rep.is_active == True).order_by(Rep.email)).scalars()  # noqa: E712
+        )
+        segments = _distinct_segments(session)
+
+        common_ctx = dict(
+            reps=reps,
+            segments=segments,
+            segment_filter=segment or "",
+            rep_filter=rep or "",
+            status_filter=status or "",
+            routing_status_filter=routing_status or "",
+            company_filter=company or "",
+            search=search or "",
         )
 
         # Two modes:
@@ -151,6 +181,7 @@ def leads_index(
                 routing_status=routing_status,
                 company_q=company,
                 search=search,
+                segment=segment,
             )
             leads = list(
                 session.execute(stmt.limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE)).scalars()
@@ -161,16 +192,11 @@ def leads_index(
                 leads=leads,
                 sections=None,
                 totals=None,
-                reps=reps,
-                rep_filter=rep,
-                status_filter=status or "",
-                routing_status_filter=routing_status or "",
-                company_filter=company or "",
-                search=search or "",
                 page=page,
                 has_more=len(leads) == PAGE_SIZE,
                 fallback_view=False,
                 grouped_view=False,
+                **common_ctx,
             )
 
         sections, totals = _build_grouped_view(
@@ -179,6 +205,7 @@ def leads_index(
             routing_status=routing_status,
             company_q=company,
             search=search,
+            segment=segment,
         )
         return render(
             request,
@@ -186,17 +213,115 @@ def leads_index(
             leads=None,
             sections=sections,
             totals=totals,
-            reps=reps,
-            rep_filter="",
-            status_filter=status or "",
-            routing_status_filter=routing_status or "",
-            company_filter=company or "",
-            search=search or "",
             page=1,
             has_more=False,
             fallback_view=False,
             grouped_view=True,
+            **common_ctx,
         )
+
+
+@router.get("/export.csv")
+def leads_export_csv(
+    rep: Optional[str] = None,
+    status: Optional[str] = None,
+    routing_status: Optional[str] = None,
+    company: Optional[str] = None,
+    search: Optional[str] = None,
+    segment: Optional[str] = None,
+    with_email_only: bool = True,
+    _user: str = Depends(require_admin),
+):
+    """CSV export of every lead matching the current filters.
+
+    Mirrors the filter set on the /admin/leads page so the download
+    respects whatever the operator was looking at. `with_email_only=true`
+    (default) drops LinkedIn-only and no-contact rows — flip to false
+    to get the entire set.
+
+    Columns are deliberately verbose (everything a rep or analyst might
+    want); columns can be hidden in Excel/Sheets after download.
+    """
+    import csv as csvlib
+    import io
+    from datetime import datetime as _dt
+
+    with session_scope() as session:
+        stmt = (
+            select(Lead)
+            .options(joinedload(Lead.company))
+            .order_by(
+                func.lower(func.trim(Company.industry)).asc().nulls_last(),
+                Lead.date_discovered.desc(),
+            )
+        )
+        # Force the join even when no other filter needs it, so the ORDER BY
+        # on Company.industry works.
+        if not (company or segment):
+            stmt = stmt.join(Company, Lead.company_id == Company.id)
+        stmt = _build_filter(
+            stmt,
+            rep=rep,
+            status=status,
+            routing_status=routing_status,
+            company_q=company,
+            search=search,
+            segment=segment,
+        )
+        if with_email_only:
+            stmt = stmt.where(Lead.email.is_not(None), Lead.email != "")
+        leads = list(session.execute(stmt).scalars())
+
+        buf = io.StringIO()
+        writer = csvlib.writer(buf)
+        writer.writerow([
+            "Segment", "Company", "Domain",
+            "First Name", "Last Name", "Title",
+            "Seniority", "Department",
+            "Country", "City",
+            "Email", "LinkedIn URL",
+            "Routing Status", "Delivery Status",
+            "Assigned Rep Email", "Assigned Rep Name",
+            "Date Discovered",
+        ])
+        for lead in leads:
+            c = lead.company
+            seg = ((c.industry if c else "") or "").title()
+            writer.writerow([
+                seg,
+                (c.company_name if c else "") or "",
+                (c.domain if c else "") or "",
+                lead.first_name or "",
+                lead.last_name or "",
+                lead.title or "",
+                lead.seniority or "",
+                lead.department or "",
+                lead.person_country or "",
+                lead.person_city or "",
+                lead.email or "",
+                lead.linkedin_url or "",
+                lead.routing_status or "",
+                lead.delivery_status or "",
+                lead.assigned_rep_email or "",
+                lead.assigned_rep_name or "",
+                lead.date_discovered.strftime("%Y-%m-%d") if lead.date_discovered else "",
+            ])
+        csv_bytes = buf.getvalue().encode("utf-8")
+
+    suffix_bits = []
+    if segment:
+        suffix_bits.append(segment.replace(" ", "_").replace("/", "-"))
+    if status:
+        suffix_bits.append(status)
+    if rep:
+        suffix_bits.append(rep.split("@")[0])
+    suffix = "-" + "-".join(suffix_bits) if suffix_bits else ""
+    filename = f"leads-export{suffix}-{_dt.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/fallback")
@@ -218,6 +343,8 @@ def leads_fallback(request: Request, _user: str = Depends(require_admin)):
         sections=None,
         totals=None,
         reps=reps,
+        segments=[],
+        segment_filter="",
         rep_filter="",
         status_filter="pending",
         routing_status_filter="fallback",
